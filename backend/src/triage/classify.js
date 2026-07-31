@@ -38,6 +38,23 @@ const KNOWN_NOISE_SENDERS = [
   'learntocare.com.au',
 ];
 
+// A customer who already fixed the problem themselves and is sharing feedback
+// reads very differently from an active fault report, even when both mention
+// the same physical issue — confirmed by real replies in Sent Items (the
+// "Push Ortho Thumb Brace" thread got a warm feedback-style reply, not an
+// escalation).
+const SELF_RESOLVED_SIGNALS = [
+  'i have sorted',
+  "i've sorted",
+  'sorted it out',
+  'i fixed',
+  'we fixed',
+  'resolved it myself',
+  'managed to fix',
+  'great product',
+  'wonderful feedback',
+];
+
 function domainOf(email) {
   if (!email) return '';
   const at = email.lastIndexOf('@');
@@ -124,11 +141,13 @@ function classify(email) {
   }
 
   // --- Priority ---
+  const isSelfResolvedFeedback = category === 'EQUIPMENT_FAULT' && includesAny(text, SELF_RESOLVED_SIGNALS);
+
   let priority = 'NORMAL';
   const urgentSignals =
     email.importance === 'high' ||
     includesAny(subject, ['urgent', 'asap']) ||
-    category === 'EQUIPMENT_FAULT';
+    (category === 'EQUIPMENT_FAULT' && !isSelfResolvedFeedback);
   const lowSignals = category === 'INTERNAL' || category === 'SPAM_NOTIFICATION' || category === 'SUPPLIER_VENDOR';
 
   if (urgentSignals) {
@@ -145,7 +164,7 @@ function classify(email) {
   const facility = isInternalSender ? null : orgNameForDomain(senderDomain);
 
   // --- Suggested action ---
-  const suggestedAction = suggestedActionFor(category, { poNumber, quoteNumber, facility });
+  const suggestedAction = suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfResolvedFeedback });
 
   return {
     category,
@@ -160,20 +179,27 @@ function classify(email) {
   };
 }
 
-function suggestedActionFor(category, { poNumber, quoteNumber, facility }) {
+// Suggested actions below are grounded in real Sent Items replies from
+// sales@jdhealthcare.com.au (see backend/docs/response-patterns.md), not
+// generic guesses — e.g. PO/ETA and equipment-fault replies both route
+// through an internal check before anything goes back to the customer.
+function suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfResolvedFeedback }) {
   switch (category) {
     case 'EQUIPMENT_FAULT':
-      return 'Priority: contact customer to confirm patient/resident impact, arrange assessment or replacement, escalate to product/clinical team if safety-related.';
+      if (isSelfResolvedFeedback) {
+        return 'Customer already resolved this themselves and is sharing feedback — reply warmly, thank them, and address any specific detail they raised (e.g. sizing). No escalation needed unless they request a replacement part.';
+      }
+      return 'Forward internally to Purchasing (cc the manufacturer if needed) with a short structured summary — what broke, suspected cause, and a request to confirm replacement part availability & price — rather than replying to the customer directly yet.';
     case 'BACKORDER_NOTICE':
-      return `Check backorder status for ${facility || 'this account'}${poNumber ? ` (PO ${poNumber})` : ''} and provide a revised ETA; escalate with supplier if overdue.`;
+      return `Check container/stock status for ${facility || 'this account'}${poNumber ? ` (PO ${poNumber})` : ''} with Purchasing, then reply with a specific revised delivery window and an apology for the delay.`;
     case 'PO_ETA_REQUEST':
-      return `Look up ${poNumber ? `PO ${poNumber}` : 'the referenced purchase order'} in the ERP, confirm dispatch status, and reply with an ETA.`;
+      return `Confirm ${poNumber ? `PO ${poNumber}'s` : "the referenced PO's"} dispatch/container status with Purchasing before replying. If delivered, attach Proof of Delivery; if not, give a specific revised delivery window with an apology for any delay.`;
     case 'INVOICE_BILLING':
-      return 'Forward to Accounts team with the invoice reference; confirm the disputed amount and reattach supporting documentation if requested.';
+      return 'Check tracking/dispatch records for Proof of Delivery, or loop in Accounts (accounts@jdhealthcare.com.au) for billing corrections; reply with the specific resolution (POD attached, credit note, etc.).';
     case 'QUOTE_PRICING':
-      return `Confirm current pricing with the sales rep${quoteNumber ? ` for quote ${quoteNumber}` : ''} and send an updated quote.`;
+      return `Confirm current stock and pricing with the sales rep${quoteNumber ? ` for quote ${quoteNumber}` : ''} before replying — send the quote if in stock, or a specific backorder ETA with an apology if not.`;
     case 'PRODUCT_ENQUIRY':
-      return 'Respond with product/compatibility details from the spec sheet; escalate to a product specialist if clinical judgement is needed.';
+      return "If it's a simple factual/compatibility question, answer directly using the spec sheet (match the customer's exact figures). If it's a sales lead, trial request, or needs product expertise, forward internally to the relevant specialist with a short intro note.";
     case 'SUPPLIER_VENDOR':
       return 'Route to purchasing/procurement contact for parts sourcing follow-up.';
     case 'INTERNAL':

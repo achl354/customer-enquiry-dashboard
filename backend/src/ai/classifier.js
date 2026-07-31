@@ -63,8 +63,13 @@ const RESPONSE_SCHEMA = {
       type: 'string',
       description: 'A concrete next step for the customer service staff member handling this, grounded in how this team actually operates (see system prompt). Prefer a specific routing instruction over a generic one.',
     },
+    draftReply: {
+      ...nullableString,
+      description:
+        'A ready-to-send draft email in the house style (see system prompt) — either a direct customer-facing reply, or a short internal handoff/forward note if this enquiry routes to someone else rather than being answered directly. Null for INTERNAL/SPAM_NOTIFICATION/UNCLASSIFIED, or for fully-automated "do not reply" system notifications where no message is ever sent.',
+    },
   },
-  required: ['category', 'priority', 'confidence', 'extractedFields', 'reasoning', 'suggestedAction'],
+  required: ['category', 'priority', 'confidence', 'extractedFields', 'reasoning', 'suggestedAction', 'draftReply'],
   additionalProperties: false,
 };
 
@@ -89,6 +94,14 @@ const SYSTEM_PROMPT = `You triage incoming emails for sales@jdhealthcare.com.au,
 
 ## Tone and reply structure (for suggestedAction grounding)
 Staff replies follow: greeting by first name -> "Thank you for contacting us." -> category-specific body -> apology line if there was a delay -> close -> signature (currently "Operations Coordinator", was "Client Services Executive" earlier — titles change over time, don't assume a fixed one). Tone is warm and relationship-driven, not purely transactional. A large share of enquiries are actually routed to the right internal person rather than answered directly by whoever reads the inbox — reflect that in suggestedAction when applicable (say who to route to, not just "reply to customer").
+
+## Drafting draftReply
+Write a complete, ready-to-send draft — the staff member reviews and sends it, not writes from scratch. Two distinct shapes depending on whether this enquiry is answered directly or routed:
+
+- **Direct customer reply** (PO_ETA_REQUEST, RETURNS_CREDIT, INVOICE_BILLING, QUOTE_PRICING, BACKORDER_NOTICE, LOGISTICS_FREIGHT, or a PRODUCT_ENQUIRY with no city tag/trial request): write the actual reply to the customer, following the house structure above. Greet them by first name if you can identify one from the sender name or body (e.g. "Hi Rebecca,"), otherwise "Hi there,". Reference the specific PO/quote number, facility, or product mentioned. Since you don't know internal stock/dispatch status, phrase anything that depends on it as what staff will confirm (e.g. "I'm just confirming the dispatch status with our warehouse team and will follow up shortly with a firm date") rather than inventing a fake status. Close with "Kind regards,\n[Your name]\nOperations Coordinator\nJD Healthcare Group".
+- **Internal handoff/routing note** (PRODUCT_COMPLAINT, a PRODUCT_ENQUIRY with a city tag or trial request, EQUIPMENT_FAULT needing Purchasing/manufacturer, SUPPLIER_VENDOR): write the short internal intro note staff actually send, in the observed style — e.g. "Hi Graham,\n\nCould you please assist [customer name] with the below regarding a formal complaint for [product]? Product code, LOT and expiry are in their email.\n\nThanks,\n[Your name]" — addressed to the correct named person(s) from the routing rules above, briefly summarising what the customer needs so the recipient doesn't have to re-read the whole thread.
+
+Set draftReply to null for INTERNAL, SPAM_NOTIFICATION, or UNCLASSIFIED, and also for fully-automated "PLEASE DO NOT REPLY" system notifications (e.g. a government procurement system delivering a new PO) where the only real action is internal processing, not a reply or handoff email to anyone.
 
 ## Priority
 URGENT: genuine equipment faults (not self-resolved), formal complaints, or explicit urgency (subject says URGENT/ASAP, or Outlook importance is high).
@@ -173,6 +186,7 @@ async function classify(email, model = MODEL) {
       cityTag: parsed.extractedFields.cityTag,
     },
     suggestedAction: parsed.suggestedAction,
+    draftReply: parsed.draftReply,
   };
 }
 

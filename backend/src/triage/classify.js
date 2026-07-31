@@ -232,7 +232,7 @@ function classify(email) {
   const isTrialRequest = category === 'PRODUCT_ENQUIRY' && includesAny(text, TRIAL_SIGNALS);
 
   // --- Suggested action ---
-  const suggestedAction = suggestedActionFor(category, {
+  const actionParams = {
     poNumber,
     quoteNumber,
     facility,
@@ -240,7 +240,9 @@ function classify(email) {
     isPriceDiscrepancy,
     cityTag,
     isTrialRequest,
-  });
+  };
+  const suggestedAction = suggestedActionFor(category, actionParams);
+  const draftReply = draftReplyFor(category, actionParams);
 
   return {
     category,
@@ -253,6 +255,7 @@ function classify(email) {
       cityTag,
     },
     suggestedAction,
+    draftReply,
   };
 }
 
@@ -302,6 +305,53 @@ function suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfR
       return 'No action needed; review security quarantine only if relevant.';
     default:
       return 'Review manually — could not confidently classify this enquiry.';
+  }
+}
+
+const SIGNATURE = 'Kind regards,\n[Your name]\nOperations Coordinator\nJD Healthcare Group';
+
+// Template-only fallback for when the AI classifier is unavailable — no NLP
+// available here, so these are generic placeholders staff fill in, not
+// personalized like the AI drafts. Still gives every enquiry *something*
+// rather than nothing when running in rules-only mode.
+function draftReplyFor(category, { poNumber, quoteNumber, facility, isSelfResolvedFeedback, isPriceDiscrepancy, cityTag, isTrialRequest }) {
+  switch (category) {
+    case 'PRODUCT_COMPLAINT':
+      return `Hi Graham, Scott,\n\nCould you please assist with the complaint below${facility ? ` from ${facility}` : ''}? Please review the product code, LOT number, and expiry details in the customer's email and advise next steps.\n\nThanks,\n[Your name]`;
+    case 'EQUIPMENT_FAULT':
+      if (isSelfResolvedFeedback) {
+        return `Hi there,\n\nThank you for letting us know, and for the kind feedback — glad to hear it's sorted. Please don't hesitate to reach out if anything else comes up.\n\n${SIGNATURE}`;
+      }
+      return `Hi Scott,\n\nCould you please assist with the possible equipment fault below${facility ? ` from ${facility}` : ''}? Could you confirm replacement part availability and price so we can follow up with the customer?\n\nThanks,\n[Your name]`;
+    case 'BACKORDER_NOTICE':
+      return `Hi there,\n\nThank you for the notice. We're checking container/stock status${poNumber ? ` for PO ${poNumber}` : ''} with our warehouse team and will follow up shortly with a revised delivery window. Apologies for the delay.\n\n${SIGNATURE}`;
+    case 'PO_ETA_REQUEST':
+      if (isPriceDiscrepancy) {
+        return `Hi there,\n\nThank you for contacting us. There are some price discrepancies on this order${poNumber ? ` (PO ${poNumber})` : ''} — kindly update the pricing accordingly and send us an amended PO so we can release it for dispatch.\n\n${SIGNATURE}`;
+      }
+      return `Hi there,\n\nThank you for contacting us. I'm just confirming the dispatch/container status${poNumber ? ` for PO ${poNumber}` : ''} with our warehouse team and will follow up shortly with a firm delivery date.\n\n${SIGNATURE}`;
+    case 'RETURNS_CREDIT':
+      return `Hi there,\n\nThank you for contacting us. I can confirm we've received the returned item(s) and the credit note is being processed.\n\n${SIGNATURE}`;
+    case 'INVOICE_BILLING':
+      return `Hi there,\n\nThank you for contacting us. I'm checking our dispatch records for Proof of Delivery/billing details and will follow up shortly, looping in Accounts if needed.\n\n${SIGNATURE}`;
+    case 'LOGISTICS_FREIGHT':
+      return `Hi [courier contact],\n\nCould you please assist with the consignment/pickup detailed below${poNumber ? ` (PO ${poNumber})` : ''}?\n\nThanks,\n[Your name]`;
+    case 'QUOTE_PRICING':
+      return `Hi there,\n\nThank you for contacting us. I'm confirming current stock and pricing${quoteNumber ? ` for quote ${quoteNumber}` : ''} and will send this through shortly.\n\n${SIGNATURE}`;
+    case 'PRODUCT_ENQUIRY': {
+      const routedRep = cityTag && CITY_ROUTING[cityTag];
+      if (isTrialRequest) {
+        return `Hi Graham${routedRep ? `, ${routedRep}` : ''},\n\nCould you please assist with the trial request below${facility ? ` from ${facility}` : ''}?\n\nThanks,\n[Your name]`;
+      }
+      if (routedRep) {
+        return `Hi ${routedRep},\n\nCould you please assist with the enquiry below${facility ? ` from ${facility}` : ''} when you get a chance?\n\nThanks,\n[Your name]`;
+      }
+      return `Hi there,\n\nThank you for contacting us.\n\n${SIGNATURE}`;
+    }
+    case 'SUPPLIER_VENDOR':
+      return `Hi [purchasing contact],\n\nCould you please follow up on the parts sourcing enquiry below?\n\nThanks,\n[Your name]`;
+    default:
+      return null;
   }
 }
 

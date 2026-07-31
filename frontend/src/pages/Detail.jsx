@@ -10,15 +10,24 @@ export default function Detail() {
   const [error, setError] = useState(null);
   const [assigneeDraft, setAssigneeDraft] = useState('');
   const [saving, setSaving] = useState(false);
+  const [draftText, setDraftText] = useState('');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     getEnquiry(id)
       .then((e) => {
         setEnquiry(e);
         setAssigneeDraft(e.assignedTo || '');
+        setDraftText(e.draftReply || '');
       })
       .catch((e) => setError(e.message));
   }, [id]);
+
+  async function handleCopyDraft() {
+    await navigator.clipboard.writeText(draftText);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
 
   async function handleStatusChange(e) {
     const status = e.target.value;
@@ -94,6 +103,22 @@ export default function Detail() {
               </div>
             )}
           </div>
+
+          {enquiry.draftReply && (
+            <div className="panel">
+              <h3>Draft reply / handoff note</h3>
+              <textarea
+                className="draft-textarea"
+                value={draftText}
+                onChange={(e) => setDraftText(e.target.value)}
+                rows={10}
+              />
+              <div className="draft-actions">
+                <button type="button" onClick={handleCopyDraft}>{copied ? 'Copied!' : 'Copy to clipboard'}</button>
+                <span className="draft-hint">Review before sending — edit freely, this is a starting point.</span>
+              </div>
+            </div>
+          )}
         </div>
 
         <div>

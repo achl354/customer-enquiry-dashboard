@@ -110,7 +110,7 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 
 Set `ANTHROPIC_API_KEY` in `backend/.env` (copy from `.env.example`) and
 restart the backend. From then on, every enquiry that isn't obviously
-internal-only or known spam is classified by Claude Opus 5 instead of the
+internal-only or known spam is classified by Claude Sonnet 5 instead of the
 keyword rules — with a confidence score, better handling of nuance (e.g. a
 customer who already fixed their own issue vs. an active fault report), and
 a suggested action grounded in `backend/docs/response-patterns.md`.
@@ -125,6 +125,30 @@ a suggested action grounded in `backend/docs/response-patterns.md`.
   if you want more headroom on harder cases, at higher per-email cost.
 - Low-confidence AI classifications (<50%) are flagged on the enquiry detail
   page for a human second look rather than being silently trusted.
+
+## AI-drafted replies
+
+Every enquiry is also given a `draftReply` at classification time — shown
+on the enquiry detail page as an editable, copyable text box:
+
+- **Direct-reply categories** (PO/ETA, returns, invoice, quotes, backorder,
+  logistics, simple product enquiries) get an actual ready-to-send customer
+  reply in the house structure (greeting by first name, "Thank you for
+  contacting us", category-specific body, apology if relevant, sign-off).
+- **Routing-only categories** (formal complaints, trial requests, website/
+  sales-lead enquiries, equipment faults needing Purchasing) get a short
+  internal handoff note addressed to the correct named person(s) per the
+  routing rules in `backend/docs/response-patterns.md`, instead of a
+  customer-facing reply.
+- `draftReply` is `null` for `INTERNAL`/`SPAM_NOTIFICATION`/`UNCLASSIFIED`,
+  and for fully-automated "do not reply" system notifications where no
+  message is ever sent.
+- The rule-based fallback classifier also produces a draft (a simple
+  template using extracted fields), so this never silently disappears if
+  the AI classifier is unavailable — it's just less personalized.
+- Staff review and edit before sending; there's no auto-send integration —
+  drafts are copied into Outlook manually via the "Copy to clipboard"
+  button.
 
 ## Live ingestion setup (Microsoft Graph)
 
@@ -164,11 +188,6 @@ poller silently no-ops.
 
 ## Roadmap
 
-- **Drafted replies, not just suggested actions.** The AI classifier's
-  `suggestedAction` is a instruction for staff, not a ready-to-send reply.
-  Next step is generating an actual draft in the house reply structure
-  (documented in `backend/docs/response-patterns.md`) that staff review and
-  send, rather than write from scratch.
 - **Attachment/PDF parsing** for PO documents (many POs arrive as PDF
   attachments with the real order details, not just in the email body).
 - **Thread/context awareness.** Classify based on the full email thread

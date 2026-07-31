@@ -10,13 +10,13 @@ const insertStmt = db.prepare(`
     id, graph_message_id, internet_message_id, received_at, sender_name, sender_email,
     recipients, subject, body_preview, has_attachments, importance, web_link,
     category, priority, po_number, quote_number, facility, sender_domain, city_tag,
-    suggested_action, confidence, classified_by,
+    suggested_action, draft_reply, confidence, classified_by,
     status, assigned_to, created_at, updated_at
   ) VALUES (
     @id, @graphMessageId, @internetMessageId, @receivedAt, @senderName, @senderEmail,
     @recipients, @subject, @bodyPreview, @hasAttachments, @importance, @webLink,
     @category, @priority, @poNumber, @quoteNumber, @facility, @senderDomain, @cityTag,
-    @suggestedAction, @confidence, @classifiedBy,
+    @suggestedAction, @draftReply, @confidence, @classifiedBy,
     @status, @assignedTo, @createdAt, @updatedAt
   )
   ON CONFLICT(graph_message_id) DO NOTHING
@@ -53,6 +53,7 @@ async function ingestEmail(raw) {
     senderDomain: result.extractedFields.senderDomain,
     cityTag: result.extractedFields.cityTag || null,
     suggestedAction: result.suggestedAction,
+    draftReply: result.draftReply || null,
     confidence: result.confidence == null ? null : result.confidence,
     classifiedBy: result.classifiedBy || 'rules',
     status: 'NEW',
@@ -88,6 +89,7 @@ function rowToEnquiry(row) {
       cityTag: row.city_tag,
     },
     suggestedAction: row.suggested_action,
+    draftReply: row.draft_reply,
     confidence: row.confidence,
     classifiedBy: row.classified_by,
     status: row.status,

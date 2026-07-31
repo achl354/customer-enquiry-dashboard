@@ -31,6 +31,7 @@ db.exec(`
     sender_domain TEXT,
     city_tag TEXT,
     suggested_action TEXT,
+    draft_reply TEXT,
     confidence REAL,
     classified_by TEXT DEFAULT 'rules',
     status TEXT NOT NULL DEFAULT 'NEW',

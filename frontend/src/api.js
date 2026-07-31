@@ -1,4 +1,8 @@
-const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:4000/api';
+// Relative by default so a single-origin production deploy (Express serving
+// the built frontend directly) just works with no build-time config. Local
+// dev overrides this via frontend/.env (VITE_API_BASE) since the frontend
+// and backend run as two separate servers there.
+const API_BASE = import.meta.env.VITE_API_BASE || '/api';
 
 async function request(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {

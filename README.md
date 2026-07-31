@@ -216,6 +216,41 @@ This runs as part of every `runPollOnce()` (scheduled poll or manual
 counts. There's currently no reverse direction — changing status in the
 dashboard doesn't set the Outlook flag.
 
+## Deploying to Render
+
+`render.yaml` at the repo root is a Render Blueprint — it defines everything
+needed except secrets, so Render can provision the whole thing from the repo:
+
+1. **Create a Render account** and connect it to this GitHub repo (Render's
+   own GitHub integration — an interactive step on Render's side).
+2. **New → Blueprint**, point it at this repo. Render reads `render.yaml`
+   and provisions a single web service (Node) with a 1GB persistent disk
+   mounted at `/var/data` for the SQLite file.
+3. **Pick the Starter plan or above** — the free tier spins down after ~15
+   minutes of no HTTP traffic, which kills the in-process cron poller along
+   with it. Polling (every minute by default) only works reliably on an
+   always-on plan.
+4. **Fill in the secrets** Render prompts for (left blank in `render.yaml`
+   on purpose, so they're never committed to git):
+   - `ANTHROPIC_API_KEY` — enables AI classification, same as local.
+   - `TENANT_ID` / `CLIENT_ID` / `CLIENT_SECRET` / `MAILBOX` — the Azure AD
+     app registration credentials (see "Live ingestion setup" above). Can be
+     left blank for now — the app runs fine in demo mode without them, same
+     as locally, and you can add them later once the app registration exists.
+5. **Deploy.** The build step builds the frontend and installs backend
+   dependencies; the app then serves both the API and the built frontend
+   from one Express process on one URL — no separate frontend host, no CORS
+   to configure.
+
+This is a single-instance deployment (SQLite doesn't support multiple app
+instances writing to it concurrently) — fine for this app's scale, but worth
+knowing if traffic ever grows enough to need horizontal scaling, at which
+point SQLite would need to move to a real database server first.
+
+There is currently **no authentication** on the dashboard — see the Roadmap
+below. Don't point a Render deployment's public URL at anyone before that's
+in place.
+
 ## Roadmap
 
 - **Attachment/PDF parsing** for PO documents (many POs arrive as PDF

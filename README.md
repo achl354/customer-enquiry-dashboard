@@ -17,17 +17,29 @@ queue instead of a flat inbox.
 ## Architecture
 
 ```
-backend/   Express API + SQLite storage + rule-based triage classifier
+backend/   Express API + SQLite storage + AI/rule-based triage classifier
            + a Microsoft Graph poller for live mailbox ingestion
 frontend/  React (Vite) dashboard: Overview stats, Triage Queue, Enquiry Detail
 ```
 
-- **Classifier** (`backend/src/triage/classify.js`) — rule-based v1. Assigns a
-  category (see below), priority, extracts PO/quote number and facility name,
-  and generates a suggested action string. This is the piece to swap for a
-  real AI classifier later (see Roadmap).
+- **Triage dispatcher** (`backend/src/triage/index.js`) — the entry point every
+  email goes through. Obvious internal-only threads and known spam senders are
+  resolved with cheap deterministic rules (no need to pay for a model call on
+  unambiguous cases). Everything else — the actual enquiries — goes to:
+  - **AI classifier** (`backend/src/ai/classifier.js`) — a Claude Opus 5
+    structured-output call, grounded in `backend/docs/response-patterns.md`
+    (real reply patterns learned from the mailbox). Returns category,
+    priority, a confidence score, extracted fields, and a suggested action.
+    Active whenever `ANTHROPIC_API_KEY` is set.
+  - **Rule-based classifier** (`backend/src/triage/classify.js`) — the
+    original keyword/domain-based v1. Used as a fallback when no API key is
+    configured, or if an AI call fails for a given email, so ingestion never
+    blocks on the AI provider being down.
 - **Storage** — SQLite (`backend/data/enquiries.db`, gitignored). One row per
-  email, keyed by Graph message ID so re-polling is idempotent.
+  email, keyed by Graph message ID so re-polling is idempotent. Each row
+  records which classifier produced it (`classified_by`) and, for AI
+  classifications, a confidence score — surfaced on the enquiry detail page,
+  with low-confidence results flagged for a second look.
 - **Ingestion** — two paths:
   1. `backend/seed-data/sample-emails.json` — real (anonymized-safe) sample
      emails pulled from the mailbox, used by `npm run seed` so the dashboard
@@ -40,12 +52,15 @@ frontend/  React (Vite) dashboard: Overview stats, Triage Queue, Enquiry Detail
 
 | Category | Meaning |
 |---|---|
+| `PRODUCT_COMPLAINT` | Formal/adverse-event complaints — LOT/expiry, discontinue-use language |
 | `EQUIPMENT_FAULT` | Product not working / fitting issue — may be patient-impacting |
 | `BACKORDER_NOTICE` | Automated backorder-past-due notice from a buyer |
 | `PO_ETA_REQUEST` | Purchase order or dispatch/ETA chase from a health dept or facility |
+| `RETURNS_CREDIT` | Goods returns and credit notes |
 | `INVOICE_BILLING` | Invoice disputes, overbilling, payment queries |
+| `LOGISTICS_FREIGHT` | Courier/freight coordination (consignments, PODs, pickups) |
 | `QUOTE_PRICING` | Quote requests/follow-ups, pricing questions |
-| `PRODUCT_ENQUIRY` | General customer product/compatibility/hire questions |
+| `PRODUCT_ENQUIRY` | General customer product/compatibility/hire questions, sales leads |
 | `SUPPLIER_VENDOR` | Correspondence with parts suppliers/manufacturers |
 | `INTERNAL` | Staff-to-staff threads that happen to CC sales@ |
 | `SPAM_NOTIFICATION` | Quarantine alerts, marketing/training newsletters |
@@ -63,6 +78,11 @@ npm install
 npm run seed   # loads backend/seed-data/sample-emails.json into SQLite
 npm start       # http://localhost:4000
 ```
+
+Copy `backend/.env.example` to `backend/.env` and set `ANTHROPIC_API_KEY` to
+enable real AI classification (see below). Without it, `npm run seed` and
+live ingestion use the rule-based classifier only — everything else works
+the same either way.
 
 ### Frontend
 
@@ -83,8 +103,28 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 | `GET /api/enquiries/:id` | Single enquiry, full detail |
 | `PATCH /api/enquiries/:id` | Update `status` and/or `assignedTo` |
 | `GET /api/stats/overview` | Counts by category/status/priority, oldest open, avg resolution time |
-| `GET /api/ingest/status` | Whether live Graph polling is configured |
+| `GET /api/ingest/status` | Whether live Graph polling and AI classification are configured |
 | `POST /api/ingest/run` | Manually trigger one poll cycle |
+
+## AI classification
+
+Set `ANTHROPIC_API_KEY` in `backend/.env` (copy from `.env.example`) and
+restart the backend. From then on, every enquiry that isn't obviously
+internal-only or known spam is classified by Claude Opus 5 instead of the
+keyword rules — with a confidence score, better handling of nuance (e.g. a
+customer who already fixed their own issue vs. an active fault report), and
+a suggested action grounded in `backend/docs/response-patterns.md`.
+
+- No key configured → rule-based classifier only, no behavior change.
+- Key configured but a classification call fails (network, rate limit, etc.)
+  → that single enquiry falls back to the rule-based classifier rather than
+  blocking ingestion; it's tagged `classified_by: "rules-fallback"`.
+- The model call uses `thinking: {type: "disabled"}` at `effort: "medium"` —
+  this is a bounded classification task, not open-ended reasoning, so full
+  adaptive thinking isn't needed. Tune this in `backend/src/ai/classifier.js`
+  if you want more headroom on harder cases, at higher per-email cost.
+- Low-confidence AI classifications (<50%) are flagged on the enquiry detail
+  page for a human second look rather than being silently trusted.
 
 ## Live ingestion setup (Microsoft Graph)
 
@@ -124,11 +164,14 @@ poller silently no-ops.
 
 ## Roadmap
 
-- **Real AI classification.** Swap/augment `classify.js` with a Claude API
-  call per email for higher-accuracy category/priority detection, better
-  entity extraction (product names, clinical details), and a genuinely
-  drafted reply rather than a fixed template — the rule-based version was an
-  intentional v1 to ship something usable without an API key dependency.
+- **Drafted replies, not just suggested actions.** The AI classifier's
+  `suggestedAction` is a instruction for staff, not a ready-to-send reply.
+  Next step is generating an actual draft in the house reply structure
+  (documented in `backend/docs/response-patterns.md`) that staff review and
+  send, rather than write from scratch.
 - **Attachment/PDF parsing** for PO documents (many POs arrive as PDF
   attachments with the real order details, not just in the email body).
+- **Thread/context awareness.** Classify based on the full email thread
+  history, not just the latest message — useful for catching "already
+  replied to this" duplicates and for knowing what's already been promised.
 - **Auth** for the dashboard itself before any real deployment.

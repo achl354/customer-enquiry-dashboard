@@ -10,7 +10,12 @@
   --border: rgba(11, 11, 11, 0.1);
   --success-text: #006300;
 
-  --series-1: #2a78d6;
+  /* JD Healthcare Group brand */
+  --brand-navy: #1c3f7c;
+  --brand-navy-deep: #0b1c3a;
+  --brand-navy-tint: rgba(255, 255, 255, 0.14);
+
+  --series-1: #1c3f7c;
   --series-2: #eb6834;
   --series-3: #1baf7a;
   --series-4: #eda100;
@@ -38,7 +43,7 @@
     --border: rgba(255, 255, 255, 0.1);
     --success-text: #0ca30c;
 
-    --series-1: #3987e5;
+    --series-1: #5b86d9;
     --series-2: #d95926;
     --series-3: #199e70;
     --series-4: #c98500;
@@ -61,7 +66,7 @@
   --border: rgba(255, 255, 255, 0.1);
   --success-text: #0ca30c;
 
-  --series-1: #3987e5;
+  --series-1: #5b86d9;
   --series-2: #d95926;
   --series-3: #199e70;
   --series-4: #c98500;

@@ -99,7 +99,9 @@ function rowToEnquiry(row) {
 
 const SORT_COLUMNS = {
   receivedAt: 'received_at',
-  priority: 'priority',
+  // Alphabetical order on the raw text ('HIGH', 'LOW', 'NORMAL', 'URGENT')
+  // doesn't match severity, so rank by actual urgency instead.
+  priority: "CASE priority WHEN 'URGENT' THEN 4 WHEN 'HIGH' THEN 3 WHEN 'NORMAL' THEN 2 WHEN 'LOW' THEN 1 ELSE 0 END",
   category: 'category',
   status: 'status',
 };
@@ -185,6 +187,12 @@ function overviewStats() {
 
   const total = db.prepare('SELECT COUNT(*) as c FROM enquiries').get().c;
 
+  const byClassifiedBy = db.prepare('SELECT classified_by, COUNT(*) as count FROM enquiries GROUP BY classified_by').all();
+
+  const lowConfidenceCount = db
+    .prepare("SELECT COUNT(*) as c FROM enquiries WHERE classified_by = 'ai' AND confidence < 0.5")
+    .get().c;
+
   const resolvedWithDuration = db
     .prepare(
       "SELECT (julianday(updated_at) - julianday(received_at)) * 24 as hours FROM enquiries WHERE status = 'RESOLVED'"
@@ -203,6 +211,8 @@ function overviewStats() {
     byPriority: Object.fromEntries(byPriority.map((r) => [r.priority, r.count])),
     oldestOpen: rowToEnquiry(oldestOpen),
     avgResolutionHours,
+    byClassifiedBy: Object.fromEntries(byClassifiedBy.map((r) => [r.classified_by, r.count])),
+    lowConfidenceCount,
   };
 }
 

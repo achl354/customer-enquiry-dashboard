@@ -55,6 +55,14 @@ export default function Overview() {
             {stats.avgResolutionHours != null ? `${stats.avgResolutionHours.toFixed(1)}h` : '—'}
           </div>
         </div>
+        <div className="stat-tile">
+          <div className="label">Classified by AI</div>
+          <div className="value">{stats.byClassifiedBy?.ai || 0}</div>
+        </div>
+        <div className="stat-tile">
+          <div className="label">Low-confidence (needs review)</div>
+          <div className={`value ${stats.lowConfidenceCount > 0 ? 'critical' : ''}`}>{stats.lowConfidenceCount}</div>
+        </div>
       </div>
 
       {stats.oldestOpen && (

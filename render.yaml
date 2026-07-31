@@ -11,7 +11,12 @@ services:
     # block (mountPath e.g. /var/data, with DB_PATH pointed at it) once ready
     # to keep this running for real.
     plan: free
-    buildCommand: cd frontend && npm install && npm run build && cd ../backend && npm install
+    # --include=dev is required here: NODE_ENV=production (set below) makes
+    # npm install skip devDependencies by default, which would leave vite
+    # (a frontend devDependency) missing and fail "npm run build" with
+    # "vite: not found". The backend's own install doesn't need this since
+    # it only ever runs `node src/server.js`, no dev-only build step.
+    buildCommand: cd frontend && npm install --include=dev && npm run build && cd ../backend && npm install
     startCommand: cd backend && npm start
     healthCheckPath: /api/health
     envVars:

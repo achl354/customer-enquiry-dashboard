@@ -317,12 +317,15 @@ const SIGNATURE = 'Kind regards,\n[Your name]\nOperations Coordinator\nJD Health
 function draftReplyFor(category, { poNumber, quoteNumber, facility, isSelfResolvedFeedback, isPriceDiscrepancy, cityTag, isTrialRequest }) {
   switch (category) {
     case 'PRODUCT_COMPLAINT':
-      return `Hi Graham, Scott,\n\nCould you please assist with the complaint below${facility ? ` from ${facility}` : ''}? Please review the product code, LOT number, and expiry details in the customer's email and advise next steps.\n\nThanks,\n[Your name]`;
+      // Real Sent Items show this goes to the customer immediately (discontinue
+      // use + capture LOT/expiry), not routed internally first — the internal
+      // step (Graham Lade/Scott Borresen) is already covered by suggestedAction.
+      return `Hi there,\n\nThank you for bringing this to our attention. Could you please ask the customer to discontinue use of the affected product in the meantime, and confirm the exact product code, LOT number, and expiry so we can investigate further?\n\nWe'll follow up with next steps as soon as possible.\n\n${SIGNATURE}`;
     case 'EQUIPMENT_FAULT':
       if (isSelfResolvedFeedback) {
         return `Hi there,\n\nThank you for letting us know, and for the kind feedback — glad to hear it's sorted. Please don't hesitate to reach out if anything else comes up.\n\n${SIGNATURE}`;
       }
-      return `Hi Scott,\n\nCould you please assist with the possible equipment fault below${facility ? ` from ${facility}` : ''}? Could you confirm replacement part availability and price so we can follow up with the customer?\n\nThanks,\n[Your name]`;
+      return `Hi there,\n\nThank you for letting us know about this issue, and I'm sorry for the inconvenience. We're looking into replacement part availability internally and will follow up with next steps as soon as possible.\n\n${SIGNATURE}`;
     case 'BACKORDER_NOTICE':
       return `Hi there,\n\nThank you for the notice. We're checking container/stock status${poNumber ? ` for PO ${poNumber}` : ''} with our warehouse team and will follow up shortly with a revised delivery window. Apologies for the delay.\n\n${SIGNATURE}`;
     case 'PO_ETA_REQUEST':

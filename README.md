@@ -135,11 +135,17 @@ on the enquiry detail page as an editable, copyable text box:
   logistics, simple product enquiries) get an actual ready-to-send customer
   reply in the house structure (greeting by first name, "Thank you for
   contacting us", category-specific body, apology if relevant, sign-off).
-- **Routing-only categories** (formal complaints, trial requests, website/
-  sales-lead enquiries, equipment faults needing Purchasing) get a short
-  internal handoff note addressed to the correct named person(s) per the
-  routing rules in `backend/docs/response-patterns.md`, instead of a
-  customer-facing reply.
+- **Complaints and genuine equipment faults** get an immediate customer
+  acknowledgment as the draft, not an internal handoff — real Sent Items
+  show staff reply to the customer straight away (discontinue use, confirm
+  product code/LOT/expiry) rather than waiting on internal sign-off first.
+  The internal routing (e.g. to Graham Lade and Scott Borresen) is still
+  covered separately by `suggestedAction`.
+- **Routing-only categories** (trial requests, website/sales-lead
+  enquiries, supplier/vendor correspondence) get a short internal handoff
+  note addressed to the correct named person(s) per the routing rules in
+  `backend/docs/response-patterns.md`, instead of a customer-facing reply —
+  these are never answered directly at all.
 - `draftReply` is `null` for `INTERNAL`/`SPAM_NOTIFICATION`/`UNCLASSIFIED`,
   and for fully-automated "do not reply" system notifications where no
   message is ever sent.

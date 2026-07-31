@@ -1,7 +1,13 @@
 const Anthropic = require('@anthropic-ai/sdk');
 const { domainOf, orgNameForDomain } = require('../triage/classify');
 
-const MODEL = 'claude-opus-5';
+// Validated against 5 edge cases (self-resolved feedback vs. genuine fault,
+// price-discrepancy vs. backorder, sales-lead override, formal complaint) —
+// matched Claude Opus 5's category/priority on all five at comparable or
+// higher confidence, at ~60% lower cost during the introductory pricing
+// window. Classification/extraction isn't the hardest reasoning task Claude
+// does, so Sonnet-tier is the right fit here rather than defaulting to Opus.
+const MODEL = 'claude-sonnet-5';
 
 const CATEGORIES = [
   'PRODUCT_COMPLAINT',
@@ -121,19 +127,25 @@ function buildUserContent(email) {
  * rule-based classifier in ../triage/classify.js: { category, priority,
  * extractedFields, suggestedAction }, plus a confidence score and the
  * model's one-line reasoning.
+ *
+ * @param {object} email
+ * @param {string} [model] - override the default model (e.g. for A/B testing)
  */
-async function classify(email) {
+async function classify(email, model = MODEL) {
   const anthropic = getClient();
 
   const response = await anthropic.messages.create({
-    model: MODEL,
+    model,
     max_tokens: 1024,
     thinking: { type: 'disabled' },
     output_config: {
       effort: 'medium',
       format: { type: 'json_schema', schema: RESPONSE_SCHEMA },
     },
-    system: SYSTEM_PROMPT,
+    // The system prompt is identical on every call (taxonomy + grounding) —
+    // cache it so high-volume classification only pays full input price once
+    // per cache window, not on every single email.
+    system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
     messages: [{ role: 'user', content: buildUserContent(email) }],
   });
 

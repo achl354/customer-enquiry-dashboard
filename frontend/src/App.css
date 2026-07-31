@@ -14,33 +14,14 @@
 }
 
 .brand {
-  display: flex;
-  align-items: center;
-  gap: 10px;
   margin: 2px 8px 4px;
 }
 
-.brand-mark {
-  flex-shrink: 0;
-}
-
-.brand-word {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.15;
-}
-
-.brand-name {
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: #ffffff;
-}
-
-.brand-sub {
-  font-size: 11px;
-  font-weight: 400;
-  color: rgba(255, 255, 255, 0.65);
+.brand-logo {
+  width: 100%;
+  max-width: 180px;
+  height: auto;
+  display: block;
 }
 
 .app-title {

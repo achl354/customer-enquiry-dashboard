@@ -4,7 +4,7 @@ import Overview from './pages/Overview';
 import Queue from './pages/Queue';
 import Detail from './pages/Detail';
 import { getOverviewStats } from './api';
-import logoMark from './assets/jdhg-mark-white.png';
+import logoFull from './assets/jdhg-logo-full-white.png';
 import './App.css';
 
 const STATS_REFRESH_MS = 60000;
@@ -27,11 +27,7 @@ function App() {
       <div className="app-shell">
         <nav className="sidebar">
           <div className="brand">
-            <img className="brand-mark" src={logoMark} width="30" height="30" alt="" aria-hidden="true" />
-            <div className="brand-word">
-              <span className="brand-name">JD HEALTHCARE</span>
-              <span className="brand-sub">Group</span>
-            </div>
+            <img className="brand-logo" src={logoFull} alt="JD Healthcare Group" />
           </div>
           <div className="app-title">Enquiry Dashboard</div>
           <NavLink to="/overview" className={({ isActive }) => (isActive ? 'active' : '')}>

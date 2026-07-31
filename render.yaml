@@ -2,19 +2,21 @@ services:
   - type: web
     name: customer-enquiry-dashboard
     runtime: node
-    plan: starter
+    # Free tier for now, to confirm the deploy pipeline works without adding
+    # billing. Free instances have no persistent disk (SQLite resets on every
+    # redeploy/restart) and spin down after ~15 min idle (which also stops
+    # the per-minute poller until the next request wakes it up) — fine for
+    # confirming the app deploys and loads, not for real data retention or
+    # reliable live polling. Switch to `plan: starter` and re-add a `disk:`
+    # block (mountPath e.g. /var/data, with DB_PATH pointed at it) once ready
+    # to keep this running for real.
+    plan: free
     buildCommand: cd frontend && npm install && npm run build && cd ../backend && npm install
     startCommand: cd backend && npm start
     healthCheckPath: /api/health
-    disk:
-      name: enquiries-data
-      mountPath: /var/data
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
-      - key: DB_PATH
-        value: /var/data/enquiries.db
       - key: POLL_CRON_EXPRESSION
         value: "* * * * *"
       # Secrets — left blank on purpose (sync: false means Render prompts you

@@ -224,28 +224,38 @@ needed except secrets, so Render can provision the whole thing from the repo:
 1. **Create a Render account** and connect it to this GitHub repo (Render's
    own GitHub integration — an interactive step on Render's side).
 2. **New → Blueprint**, point it at this repo. Render reads `render.yaml`
-   and provisions a single web service (Node) with a 1GB persistent disk
-   mounted at `/var/data` for the SQLite file.
-3. **Pick the Starter plan or above** — the free tier spins down after ~15
-   minutes of no HTTP traffic, which kills the in-process cron poller along
-   with it. Polling (every minute by default) only works reliably on an
-   always-on plan.
-4. **Fill in the secrets** Render prompts for (left blank in `render.yaml`
+   and provisions a single web service (Node), currently on the **free
+   plan**, to confirm the deploy pipeline works before adding any billing.
+3. **Fill in the secrets** Render prompts for (left blank in `render.yaml`
    on purpose, so they're never committed to git):
    - `ANTHROPIC_API_KEY` — enables AI classification, same as local.
    - `TENANT_ID` / `CLIENT_ID` / `CLIENT_SECRET` / `MAILBOX` — the Azure AD
      app registration credentials (see "Live ingestion setup" above). Can be
      left blank for now — the app runs fine in demo mode without them, same
      as locally, and you can add them later once the app registration exists.
-5. **Deploy.** The build step builds the frontend and installs backend
+4. **Deploy.** The build step builds the frontend and installs backend
    dependencies; the app then serves both the API and the built frontend
    from one Express process on one URL — no separate frontend host, no CORS
    to configure.
 
-This is a single-instance deployment (SQLite doesn't support multiple app
-instances writing to it concurrently) — fine for this app's scale, but worth
-knowing if traffic ever grows enough to need horizontal scaling, at which
-point SQLite would need to move to a real database server first.
+**Free tier caveats** (this is a "confirm it deploys" step, not a
+production setup): no persistent disk, so the SQLite database resets on
+every redeploy/restart — expect an empty dashboard until it's seeded or
+live polling adds data, and don't expect anything entered to survive a
+redeploy. It also spins down after ~15 minutes of no HTTP traffic, which
+stops the in-process cron poller until the next request wakes it back up.
+
+**When ready to actually rely on this**, switch to the Starter plan or
+above and add a persistent disk (e.g. `disk: {name: enquiries-data,
+mountPath: /var/data, sizeGB: 1}` in `render.yaml`, plus a `DB_PATH`
+env var pointing at `/var/data/enquiries.db`) so data survives restarts
+and the poller stays running continuously.
+
+This is a single-instance deployment either way (SQLite doesn't support
+multiple app instances writing to it concurrently) — fine for this app's
+scale, but worth knowing if traffic ever grows enough to need horizontal
+scaling, at which point SQLite would need to move to a real database
+server first.
 
 There is currently **no authentication** on the dashboard — see the Roadmap
 below. Don't point a Render deployment's public URL at anyone before that's

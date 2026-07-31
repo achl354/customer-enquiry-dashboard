@@ -192,6 +192,27 @@ registration:
 Without these env vars set, the app runs fine in seed-only/demo mode — the
 poller silently no-ops.
 
+## Status sync (Outlook follow-up flags)
+
+Staff already use Outlook's follow-up flag to mark a thread done — rather
+than asking them to also update status in the dashboard, every poll cycle
+re-checks each open enquiry's flag via Graph's `$batch` endpoint and syncs
+it into `status`:
+
+- Flag set to **Complete** → dashboard status becomes `RESOLVED`, regardless
+  of its current status. This is treated as the strongest signal, since a
+  human explicitly marked the thread finished in Outlook.
+- Flag set to **Flagged** (follow-up, not yet complete) → only advances a
+  still-untouched `NEW` enquiry to `IN_PROGRESS`. It never downgrades a more
+  specific status staff already set themselves in the dashboard (e.g.
+  `WAITING_ON_CUSTOMER`).
+- No flag → no change either way; it's not evidence the enquiry is still new.
+
+This runs as part of every `runPollOnce()` (scheduled poll or manual
+`POST /api/ingest/run`), which now also returns `flagsChecked`/`flagsUpdated`
+counts. There's currently no reverse direction — changing status in the
+dashboard doesn't set the Outlook flag.
+
 ## Roadmap
 
 - **Attachment/PDF parsing** for PO documents (many POs arrive as PDF

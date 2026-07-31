@@ -5,6 +5,15 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+// Maps an Outlook follow-up flag (staff already use this in Outlook itself)
+// to a dashboard status. Returns null for 'notFlagged'/unknown — that's not
+// a signal either way, not evidence the enquiry is still new.
+function statusForFlag(flagStatus) {
+  if (flagStatus === 'complete') return 'RESOLVED';
+  if (flagStatus === 'flagged') return 'IN_PROGRESS';
+  return null;
+}
+
 const insertStmt = db.prepare(`
   INSERT INTO enquiries (
     id, graph_message_id, internet_message_id, received_at, sender_name, sender_email,
@@ -56,7 +65,7 @@ async function ingestEmail(raw) {
     draftReply: result.draftReply || null,
     confidence: result.confidence == null ? null : result.confidence,
     classifiedBy: result.classifiedBy || 'rules',
-    status: 'NEW',
+    status: statusForFlag(raw.flagStatus) || 'NEW',
     assignedTo: null,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -166,6 +175,18 @@ function updateEnquiry(id, updates) {
   return getEnquiry(id);
 }
 
+// Enquiries worth re-checking against their Outlook flag on each poll — no
+// point checking ones already resolved/ignored, and no graph_message_id
+// means it's a seed record with nothing real to check in Outlook.
+function listOpenEnquiriesForFlagSync() {
+  return db
+    .prepare(
+      "SELECT id, graph_message_id, status FROM enquiries WHERE status NOT IN ('RESOLVED', 'IGNORED') AND graph_message_id IS NOT NULL"
+    )
+    .all()
+    .map((r) => ({ id: r.id, graphMessageId: r.graph_message_id, status: r.status }));
+}
+
 function overviewStats() {
   const byCategory = db.prepare('SELECT category, COUNT(*) as count FROM enquiries GROUP BY category').all();
   const byStatus = db.prepare('SELECT status, COUNT(*) as count FROM enquiries GROUP BY status').all();
@@ -218,4 +239,12 @@ function overviewStats() {
   };
 }
 
-module.exports = { ingestEmail, listEnquiries, getEnquiry, updateEnquiry, overviewStats };
+module.exports = {
+  ingestEmail,
+  listEnquiries,
+  getEnquiry,
+  updateEnquiry,
+  overviewStats,
+  listOpenEnquiriesForFlagSync,
+  statusForFlag,
+};

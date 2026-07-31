@@ -82,8 +82,17 @@ export default function Detail() {
           </div>
 
           <div className="panel">
-            <h3>AI-suggested action</h3>
+            <h3>Suggested action</h3>
             <div className="suggested-action">{enquiry.suggestedAction}</div>
+            {enquiry.classifiedBy && (
+              <div className={`classification-source ${enquiry.confidence != null && enquiry.confidence < 0.5 ? 'low-confidence' : ''}`}>
+                {enquiry.classifiedBy === 'ai' && enquiry.confidence != null
+                  ? `Classified by Claude — ${Math.round(enquiry.confidence * 100)}% confidence${enquiry.confidence < 0.5 ? ' (low — worth a second look)' : ''}`
+                  : enquiry.classifiedBy === 'rules-fallback'
+                    ? 'Classified by rules (AI classification failed for this one)'
+                    : 'Classified by rules'}
+              </div>
+            )}
           </div>
         </div>
 

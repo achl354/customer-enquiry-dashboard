@@ -15,7 +15,7 @@ async function runPollOnce() {
 
   let ingested = 0;
   for (const raw of messages) {
-    const id = repo.ingestEmail(raw);
+    const id = await repo.ingestEmail(raw);
     if (id) ingested += 1;
   }
 

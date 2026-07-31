@@ -1,10 +1,11 @@
 const express = require('express');
 const { runPollOnce, isGraphConfigured } = require('../graph/poller');
+const aiClassifier = require('../ai/classifier');
 
 const router = express.Router();
 
 router.get('/status', (req, res) => {
-  res.json({ graphConfigured: isGraphConfigured() });
+  res.json({ graphConfigured: isGraphConfigured(), aiConfigured: aiClassifier.isConfigured() });
 });
 
 router.post('/run', async (req, res) => {

@@ -313,6 +313,17 @@
   line-height: 1.5;
 }
 
+.classification-source {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.classification-source.low-confidence {
+  color: var(--status-serious);
+  font-weight: 600;
+}
+
 .control-row {
   display: flex;
   flex-direction: column;

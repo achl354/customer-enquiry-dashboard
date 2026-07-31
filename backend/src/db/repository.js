@@ -1,5 +1,5 @@
 const db = require('./index');
-const { classify } = require('../triage/classify');
+const { classifyEmail } = require('../triage');
 
 function nowIso() {
   return new Date().toISOString();
@@ -9,23 +9,26 @@ const insertStmt = db.prepare(`
   INSERT INTO enquiries (
     id, graph_message_id, internet_message_id, received_at, sender_name, sender_email,
     recipients, subject, body_preview, has_attachments, importance, web_link,
-    category, priority, po_number, quote_number, facility, sender_domain, suggested_action,
+    category, priority, po_number, quote_number, facility, sender_domain, city_tag,
+    suggested_action, confidence, classified_by,
     status, assigned_to, created_at, updated_at
   ) VALUES (
     @id, @graphMessageId, @internetMessageId, @receivedAt, @senderName, @senderEmail,
     @recipients, @subject, @bodyPreview, @hasAttachments, @importance, @webLink,
-    @category, @priority, @poNumber, @quoteNumber, @facility, @senderDomain, @suggestedAction,
+    @category, @priority, @poNumber, @quoteNumber, @facility, @senderDomain, @cityTag,
+    @suggestedAction, @confidence, @classifiedBy,
     @status, @assignedTo, @createdAt, @updatedAt
   )
   ON CONFLICT(graph_message_id) DO NOTHING
 `);
 
 /**
- * Classify a raw email and persist it as an enquiry. Idempotent on graph_message_id.
+ * Classify a raw email (AI when configured, rules otherwise/on failure) and
+ * persist it as an enquiry. Idempotent on graph_message_id.
  * Returns the inserted row id, or null if it already existed.
  */
-function ingestEmail(raw) {
-  const result = classify(raw);
+async function ingestEmail(raw) {
+  const result = await classifyEmail(raw);
   const timestamp = nowIso();
   const id = raw.graphMessageId || raw.internetMessageId || `${raw.senderEmail}-${raw.receivedAt}`;
 
@@ -48,7 +51,10 @@ function ingestEmail(raw) {
     quoteNumber: result.extractedFields.quoteNumber,
     facility: result.extractedFields.facility,
     senderDomain: result.extractedFields.senderDomain,
+    cityTag: result.extractedFields.cityTag || null,
     suggestedAction: result.suggestedAction,
+    confidence: result.confidence == null ? null : result.confidence,
+    classifiedBy: result.classifiedBy || 'rules',
     status: 'NEW',
     assignedTo: null,
     createdAt: timestamp,
@@ -79,8 +85,11 @@ function rowToEnquiry(row) {
       quoteNumber: row.quote_number,
       facility: row.facility,
       senderDomain: row.sender_domain,
+      cityTag: row.city_tag,
     },
     suggestedAction: row.suggested_action,
+    confidence: row.confidence,
+    classifiedBy: row.classified_by,
     status: row.status,
     assignedTo: row.assigned_to,
     createdAt: row.created_at,

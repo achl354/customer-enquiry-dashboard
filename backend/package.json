@@ -12,6 +12,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.115.0",
     "@azure/msal-node": "^5.4.3",
     "better-sqlite3": "^13.0.2",
     "cors": "^2.8.6",

@@ -388,5 +388,57 @@
     "hasAttachments": false,
     "importance": "normal",
     "webLink": "https://outlook.office365.com/owa/?ItemID=example29"
+  },
+  {
+    "graphMessageId": "seed-30",
+    "internetMessageId": "<goods-return-30@health.nsw.gov.au>",
+    "receivedAt": "2026-07-26T04:15:00.000Z",
+    "senderName": "Henry Lin",
+    "senderEmail": "Henry.Lin@health.nsw.gov.au",
+    "recipients": ["sales@jdhealthcare.com.au"],
+    "subject": "URGENT- Goods Return -/ item order in error- PO# 54672346",
+    "bodyPreview": "Hi team, This item was ordered in error and needs to be returned. Please arrange collection and confirm once the credit note has been processed for PO# 54672346. Tkt-FR1323640- CN2251.",
+    "hasAttachments": true,
+    "importance": "high",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example30"
+  },
+  {
+    "graphMessageId": "seed-31",
+    "internetMessageId": "<complaint-31@stgeorgehospital.com.au>",
+    "receivedAt": "2026-07-26T02:30:00.000Z",
+    "senderName": "Wound Care Clinic",
+    "senderEmail": "woundcare@stgeorgehospital.com.au",
+    "recipients": ["sales@jdhealthcare.com.au"],
+    "subject": "Customer complaint - Biodermis Epi-Derm gel sheeting",
+    "bodyPreview": "We are lodging a customer complaint regarding a batch of Biodermis Epi-Derm gel sheeting that appears to have degraded before the printed expiry date. Product code and LOT number are on the attached label. Please advise next steps.",
+    "hasAttachments": true,
+    "importance": "high",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example31"
+  },
+  {
+    "graphMessageId": "seed-32",
+    "internetMessageId": "<price-discrepancy-32@calvarycare.org.au>",
+    "receivedAt": "2026-07-25T23:10:00.000Z",
+    "senderName": "Procurement Team",
+    "senderEmail": "procurement@calvarycare.org.au",
+    "recipients": ["sales@jdhealthcare.com.au"],
+    "subject": "PO 88213 ON HOLD - price discrepancy",
+    "bodyPreview": "Hi team, our system flagged a price discrepancy on PO 88213 against your quoted pricing. Could you confirm the correct pricing so we can send an amended PO? This order is currently on hold pending resolution.",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example32"
+  },
+  {
+    "graphMessageId": "seed-33",
+    "internetMessageId": "<website-enquiry-33@gmail.com>",
+    "receivedAt": "2026-07-25T21:05:00.000Z",
+    "senderName": null,
+    "senderEmail": "noreply@wpforms.com",
+    "recipients": ["sales@jdhealthcare.com.au"],
+    "subject": "[SYDNEY] Enquiry from JD Healthcare Group Website",
+    "bodyPreview": "Occupational Therapist. Name: Rebecca Nguyen. Facility: Concord Repatriation Hospital. State: NSW. Message: I am an OT looking for pricing and availability on the EasiMove transfer sling range for a new client.",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example33"
   }
 ]

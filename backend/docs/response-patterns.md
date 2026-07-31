@@ -6,6 +6,13 @@ than generic assumptions. This is the reference to use when building the
 real AI classifier/reply-drafter (see README Roadmap) — either as a prompt
 appendix or few-shot examples.
 
+**Sample size**: an initial pass over ~55 emails, followed by a much larger
+validation pass across ~350 emails (Inbox, Archive, and Sent Items spanning
+Jan 2025–Jul 2026). The larger pass confirmed the original patterns and
+surfaced three categories the first pass missed entirely (returns/credit,
+logistics/freight, and formal product complaints), plus the geographic
+routing table and signature-evolution note below.
+
 ## Standard reply structure (very consistent across staff)
 
 1. Greeting by first name: `Good afternoon/morning [Name],` or `Hi [Name],`
@@ -29,7 +36,18 @@ appendix or few-shot examples.
 
 Tone is warm and personal — first names, occasional friendliness ("Happy
 Friday!", emoji), not purely transactional. This is a relationship-driven
-customer service culture.
+customer service culture — recurring bilingual/personal flourishes ("Hola
+Simon", "Buenos días, hermosa", "Feliz Juernes Henrisito") show the tone is
+calibrated per recipient, not just generically warm. A drafter that's too
+formal on an internal forward will read as out of character.
+
+**Signature has changed over time** — don't hardcode one title as permanent:
+- Jan 2025: "Senior Client Services Executive"
+- Most of 2025 – 27 Jul 2026: "Client Services Executive"
+- From ~27 Jul 2026: "Operations Coordinator" (current, matches examples below)
+
+A reply drafter should key off the most recent real example at ingestion
+time, not a fixed string.
 
 ## Category-specific patterns
 
@@ -88,19 +106,94 @@ with a one-line intro: *"Could you please assist [name] when you get a
 chance?"* — routing depends on topic (lifters/trials → Michael; general
 product enquiries → Edan; equipment sourcing/faults → Scott/purchasing).
 Only simple factual questions (e.g. cleaning instructions from a manual)
-get answered directly by the ops team.
+get answered directly by the ops team. Website contact-form enquiries carry
+a city tag in the subject — `"[SYDNEY] Enquiry from JD Healthcare Group
+Website"` — which maps directly to a territory rep (see routing table
+below); "New sales lead for: `<product>` - JD Healthcare Group" subjects are
+the same pattern, always forwarded, never answered directly.
+
+**Returns/credit** — distinct from billing disputes: staff confirm the
+returned item was received and process a credit note, with **no apology
+line** even when the original issue was a billing/ordering error:
+> "I can confirm that we have received the returned items and the credit
+> note has been processed" (credit note attached)
+
+**Logistics/freight** — consignment redirects, pickup confirmations, and
+proof-of-delivery threads with couriers (Steadfast Logistics, PACK & SEND,
+TNT, FedEx) are a distinct workflow from a product enquiry — staff
+coordinate directly with the courier contact on the thread, not with the
+end customer.
+
+**Formal product complaints / adverse events** — a different register from
+a routine spare-parts request or fault report. Language is procedural, not
+apologetic-first: ask the customer to discontinue use, and capture product
+code, LOT number, and expiry before anything else. Routes to a named
+quality contact (Andrew Lau in this mailbox), not Purchasing.
+
+**Price-discrepancy holds** — a PO can be "ON HOLD" for a pricing mismatch,
+not a stock delay — a materially different instruction to the customer.
+Fixed 4-part structure:
+> thank-you → "there are some price discrepancies" → itemised corrected
+> price(s) → "Kindly update the pricing accordingly and send us an amended
+> PO" → "this order is ON HOLD pending an amended PO."
+
+**Genuine engineering faults escalate past internal Purchasing** — one
+observed thread (a lifter's "Overload UP/Down" fault) went directly to the
+overseas manufacturer's engineering team, with technical back-and-forth over
+firmware/reset procedure — the generic "forward to Purchasing" action is too
+coarse for this sub-case; a real fault sometimes needs to go straight to the
+manufacturer, not through an internal stock-check step.
+
+## Geographic / territory routing table
+
+Website contact-form enquiries (subject tagged `[CITY]`) and general sales
+leads route to whichever rep covers that territory:
+
+| City tag | Routes to |
+|---|---|
+| SYDNEY | Simon White |
+| MELBOURNE | Atul Gupta / Allan Baker |
+| ADELAIDE | Miffy Boden |
+| PERTH | Edan Hanley / Rhys Hosgood |
+| NEWCASTLE | Minh-Thu Cao Xuan |
+| AUCKLAND (NZ) | Medix21 — external distributor (Aaron Morgan), not internal staff |
 
 ## Internal escalation is the default, not the exception
 
 A large share of "enquiries" in this inbox aren't resolved by the person
 reading them — they're triaged to the right internal person first:
-- Stock/ETA questions → Purchasing (Scott/"Scotty")
-- Equipment faults/spare parts → Purchasing + manufacturer
+- Stock/ETA questions → Purchasing (Scott Borresen/"Scotty")
+- Equipment faults/spare parts → Purchasing + manufacturer (or straight to
+  the manufacturer's engineering team for a genuine design/engineering fault)
+- Formal complaints / adverse events → Andrew Lau (quality contact)
 - Sales leads / trial requests / specialised product questions → named
-  product specialists
-- Billing/remittances → Accounts
+  product specialists, often by territory (see table above) or by product
+  type (lifters/trials → Michael Skerl)
+- Contract/special pricing → Jamia Vendivel (+ Lauren Langley for the
+  ops-facing version)
+- Billing/remittances/credit notes → Accounts (`accounts@jdhealthcare.com.au`,
+  Janine Emerson)
+- Logistics/freight issues → the courier contact directly, not an internal
+  routing step
 
 This means the dashboard's "suggested action" is often correctly "route to
 X" rather than "reply to customer" — the current rule-based classifier
 reflects this now (see `classify.js`), and a future AI drafter should treat
 routing as a first-class suggested action, not just reply drafting.
+
+## Known false-positive traps for keyword-only classification
+
+- A refund follow-up with no fault language at all ("I sourced a similar
+  product elsewhere, thanks anyway") still needs internal routing ("I will
+  pass this to Purchasing for consideration") — easy to miss if only
+  scanning for complaint/fault vocabulary.
+- Adverse-event complaints often contain **no** "broken"/"fault"/"malfunction"
+  words at all — they read like a routine product enquiry unless you check
+  for "customer complaint", "discontinue use", "LOT number".
+- "ON HOLD" in a subject line is ambiguous by itself — could be a stock
+  backorder or a price-discrepancy hold, and the correct customer-facing
+  instruction is different for each.
+- A courier/logistics thread often carries "URGENT" in the subject and gets
+  the priority right by luck (urgent-keyword match), but without a
+  dedicated category it gets miscategorized as a product or supplier
+  enquiry, which points staff at the wrong next action.

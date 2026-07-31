@@ -1,10 +1,13 @@
 const COMPANY_DOMAIN = 'jdhealthcare.com.au';
 
 const CATEGORIES = [
+  'PRODUCT_COMPLAINT',
   'EQUIPMENT_FAULT',
   'BACKORDER_NOTICE',
   'PO_ETA_REQUEST',
+  'RETURNS_CREDIT',
   'INVOICE_BILLING',
+  'LOGISTICS_FREIGHT',
   'QUOTE_PRICING',
   'PRODUCT_ENQUIRY',
   'SUPPLIER_VENDOR',
@@ -16,6 +19,9 @@ const CATEGORIES = [
 const PRIORITIES = ['URGENT', 'HIGH', 'NORMAL', 'LOW'];
 
 // Known health-department / institutional buyer domains -> friendly org name.
+// Kept to the highest-volume senders seen across a 350+ email sample — the
+// domain-derived title-case fallback in orgNameForDomain() handles the long
+// tail reasonably, so this list is deliberately not exhaustive.
 const KNOWN_ORG_DOMAINS = {
   'health.nsw.gov.au': 'NSW Health',
   'health.sa.gov.au': 'SA Health',
@@ -25,18 +31,39 @@ const KNOWN_ORG_DOMAINS = {
   'health.wa.gov.au': 'WA Health',
   'thewomens.org.au': "The Royal Women's Hospital",
   'healthecare.com.au': 'Healthecare (Maitland Private)',
+  'svha.org.au': "St Vincent's Health Australia",
+  'epworth.org.au': 'Epworth HealthCare',
+  'calvarycare.org.au': 'Calvary Health Care',
+  'healthscope.com.au': 'Healthscope',
+  'ramsayhealth.com.au': 'Ramsay Health Care',
+  'monashhealth.org': 'Monash Health',
+  'bendigohealth.org.au': 'Bendigo Health',
+  'act.gov.au': 'ACT Health',
+  'ambulance.qld.gov.au': 'Queensland Ambulance',
+  'ambulance.vic.gov.au': 'Ambulance Victoria',
+  'novita.org.au': 'Novita',
+  'easternhealth.org.au': 'Eastern Health',
+  'petermac.org': 'Peter Mac',
+  'sjog.org.au': "St John of God Health Care",
 };
 
-const KNOWN_SUPPLIER_DOMAINS = [
-  'aneticaid.com',
-  'activtec.com.au',
-  'servicemed.com.au',
-];
+const KNOWN_SUPPLIER_DOMAINS = ['aneticaid.com', 'activtec.com.au', 'servicemed.com.au'];
 
-const KNOWN_NOISE_SENDERS = [
-  'quarantine@messaging.microsoft.com',
-  'learntocare.com.au',
-];
+const KNOWN_LOGISTICS_DOMAINS = ['steadfastlogistics.com.au', 'packsend.com.au', 'tnt.com.au', 'fedex.com'];
+
+const KNOWN_NOISE_SENDERS = ['quarantine@messaging.microsoft.com', 'learntocare.com.au'];
+
+// City tag in "[CITY] Enquiry from JD Healthcare Group Website" subjects ->
+// the territory rep it gets forwarded to. Confirmed from real forwards in
+// Sent Items; deliberately not exhaustive (unmapped cities just show no rep).
+const CITY_ROUTING = {
+  SYDNEY: 'Simon White',
+  MELBOURNE: 'Atul Gupta / Allan Baker',
+  ADELAIDE: 'Miffy Boden',
+  PERTH: 'Edan Hanley / Rhys Hosgood',
+  NEWCASTLE: 'Minh-Thu Cao Xuan',
+  AUCKLAND: 'Medix21 (external distributor)',
+};
 
 // A customer who already fixed the problem themselves and is sharing feedback
 // reads very differently from an active fault report, even when both mention
@@ -54,6 +81,19 @@ const SELF_RESOLVED_SIGNALS = [
   'great product',
   'wonderful feedback',
 ];
+
+// Adverse-event / formal complaint language rarely overlaps with generic
+// "broken"/"fault" wording, so it needs its own check ahead of EQUIPMENT_FAULT
+// or it gets misread as a routine spare-parts request.
+const COMPLAINT_SIGNALS = ['customer complaint', 'discontinue use', 'lot number', 'adverse event'];
+
+const RETURNS_SIGNALS = ['goods return', 'credit note', 'return label', 'item order in error', 'returned items'];
+
+// Distinct from a genuine stock backorder: the order is held because the
+// customer's PO doesn't match current pricing, not because of a supply delay.
+const PRICE_DISCREPANCY_SIGNALS = ['price discrepancy', 'amended po', 'kindly update the pricing'];
+
+const LOGISTICS_SIGNALS = ['consignment', 'proof of delivery', 'redirect', 'pickup confirmation', 'pod attached'];
 
 function domainOf(email) {
   if (!email) return '';
@@ -86,6 +126,11 @@ function extractQuoteNumber(text) {
   return m ? `Q${m[1]}` : null;
 }
 
+function extractCityTag(subject) {
+  const m = subject.match(/^\[([A-Z]+)\]/);
+  return m ? m[1].toUpperCase() : null;
+}
+
 function includesAny(haystack, needles) {
   const lower = haystack.toLowerCase();
   return needles.some((n) => lower.includes(n));
@@ -112,6 +157,7 @@ function classify(email) {
 
   const isInternalSender = senderDomain === COMPANY_DOMAIN;
   const hasExternalRecipient = recipients.some((r) => domainOf(r) !== COMPANY_DOMAIN);
+  const cityTag = extractCityTag(subject);
 
   let category = 'UNCLASSIFIED';
 
@@ -119,16 +165,27 @@ function classify(email) {
     category = 'SPAM_NOTIFICATION';
   } else if (isInternalSender && !hasExternalRecipient) {
     category = 'INTERNAL';
+  } else if (includesAny(text, COMPLAINT_SIGNALS)) {
+    category = 'PRODUCT_COMPLAINT';
+  } else if (includesAny(subject, ['enquiry from jd healthcare group website', 'new sales lead for'])) {
+    // Unambiguous forward/routing pattern — takes precedence over generic
+    // body keywords (e.g. a website enquiry that mentions "pricing" would
+    // otherwise get swallowed by the QUOTE_PRICING check below).
+    category = 'PRODUCT_ENQUIRY';
   } else if (
     includesAny(text, ['not inflating', 'not turning', 'malfunction', 'not working', 'stopped working', 'fault', 'broken', 'digs into', 'does not fit', "doesn't fit"])
   ) {
     category = 'EQUIPMENT_FAULT';
   } else if (includesAny(text, ['backorder'])) {
     category = 'BACKORDER_NOTICE';
+  } else if (includesAny(text, RETURNS_SIGNALS)) {
+    category = 'RETURNS_CREDIT';
   } else if (includesAny(text, ['overbilled', 'overbilling', 'invoice', 'payment req', 'inv#', 'inv ', 'invoice#'])) {
     category = 'INVOICE_BILLING';
+  } else if (KNOWN_LOGISTICS_DOMAINS.some((d) => senderDomain === d) || includesAny(text, LOGISTICS_SIGNALS)) {
+    category = 'LOGISTICS_FREIGHT';
   } else if (
-    includesAny(text, ['purchase order', 'po#', 'eta', 'dispatch', 'despatch', 'consignment', 'delivery date', 'need by date']) ||
+    includesAny(text, ['purchase order', 'po#', 'eta', 'dispatch', 'despatch', 'delivery date', 'need by date']) ||
     Object.keys(KNOWN_ORG_DOMAINS).some((d) => senderDomain === d || senderDomain.endsWith(`.${d}`))
   ) {
     category = 'PO_ETA_REQUEST';
@@ -142,17 +199,23 @@ function classify(email) {
 
   // --- Priority ---
   const isSelfResolvedFeedback = category === 'EQUIPMENT_FAULT' && includesAny(text, SELF_RESOLVED_SIGNALS);
+  const isPriceDiscrepancy = category === 'PO_ETA_REQUEST' && includesAny(text, PRICE_DISCREPANCY_SIGNALS);
 
   let priority = 'NORMAL';
   const urgentSignals =
     email.importance === 'high' ||
     includesAny(subject, ['urgent', 'asap']) ||
+    category === 'PRODUCT_COMPLAINT' ||
     (category === 'EQUIPMENT_FAULT' && !isSelfResolvedFeedback);
   const lowSignals = category === 'INTERNAL' || category === 'SPAM_NOTIFICATION' || category === 'SUPPLIER_VENDOR';
 
   if (urgentSignals) {
     priority = 'URGENT';
-  } else if (category === 'BACKORDER_NOTICE' || (category === 'PO_ETA_REQUEST' && includesAny(text, ['resend', 'again', 'still outstanding', 'overdue']))) {
+  } else if (
+    isPriceDiscrepancy ||
+    category === 'BACKORDER_NOTICE' ||
+    (category === 'PO_ETA_REQUEST' && includesAny(text, ['resend', 'again', 'still outstanding', 'overdue']))
+  ) {
     priority = 'HIGH';
   } else if (lowSignals) {
     priority = 'LOW';
@@ -164,7 +227,14 @@ function classify(email) {
   const facility = isInternalSender ? null : orgNameForDomain(senderDomain);
 
   // --- Suggested action ---
-  const suggestedAction = suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfResolvedFeedback });
+  const suggestedAction = suggestedActionFor(category, {
+    poNumber,
+    quoteNumber,
+    facility,
+    isSelfResolvedFeedback,
+    isPriceDiscrepancy,
+    cityTag,
+  });
 
   return {
     category,
@@ -174,6 +244,7 @@ function classify(email) {
       quoteNumber,
       facility,
       senderDomain,
+      cityTag,
     },
     suggestedAction,
   };
@@ -183,23 +254,37 @@ function classify(email) {
 // sales@jdhealthcare.com.au (see backend/docs/response-patterns.md), not
 // generic guesses — e.g. PO/ETA and equipment-fault replies both route
 // through an internal check before anything goes back to the customer.
-function suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfResolvedFeedback }) {
+function suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfResolvedFeedback, isPriceDiscrepancy, cityTag }) {
   switch (category) {
+    case 'PRODUCT_COMPLAINT':
+      return 'Formal/adverse-event complaint — route to Andrew Lau (or quality contact), ask the customer to discontinue use, and capture the product code, LOT number, and expiry before responding further.';
     case 'EQUIPMENT_FAULT':
       if (isSelfResolvedFeedback) {
         return 'Customer already resolved this themselves and is sharing feedback — reply warmly, thank them, and address any specific detail they raised (e.g. sizing). No escalation needed unless they request a replacement part.';
       }
-      return 'Forward internally to Purchasing (cc the manufacturer if needed) with a short structured summary — what broke, suspected cause, and a request to confirm replacement part availability & price — rather than replying to the customer directly yet.';
+      return 'Forward internally to Purchasing (cc the manufacturer if needed) with a short structured summary — what broke, suspected cause, and a request to confirm replacement part availability & price — rather than replying to the customer directly yet. If it looks like a genuine design/engineering fault (not just a spare part), it may need to go straight to the manufacturer\'s engineering team instead of Purchasing.';
     case 'BACKORDER_NOTICE':
       return `Check container/stock status for ${facility || 'this account'}${poNumber ? ` (PO ${poNumber})` : ''} with Purchasing, then reply with a specific revised delivery window and an apology for the delay.`;
     case 'PO_ETA_REQUEST':
+      if (isPriceDiscrepancy) {
+        return `This order is on hold due to a pricing mismatch, not a stock delay — reply with the corrected item price(s) and ask the customer to send an amended PO${poNumber ? ` for ${poNumber}` : ''} before it can be dispatched.`;
+      }
       return `Confirm ${poNumber ? `PO ${poNumber}'s` : "the referenced PO's"} dispatch/container status with Purchasing before replying. If delivered, attach Proof of Delivery; if not, give a specific revised delivery window with an apology for any delay.`;
+    case 'RETURNS_CREDIT':
+      return 'Confirm the returned item(s) have been received, process/attach the credit note, and reply factually — no apology needed unless the return was our error.';
     case 'INVOICE_BILLING':
       return 'Check tracking/dispatch records for Proof of Delivery, or loop in Accounts (accounts@jdhealthcare.com.au) for billing corrections; reply with the specific resolution (POD attached, credit note, etc.).';
+    case 'LOGISTICS_FREIGHT':
+      return 'Coordinate directly with the courier/freight contact on the thread (consignment redirect, pickup, or proof of delivery) rather than treating this as a product enquiry.';
     case 'QUOTE_PRICING':
       return `Confirm current stock and pricing with the sales rep${quoteNumber ? ` for quote ${quoteNumber}` : ''} before replying — send the quote if in stock, or a specific backorder ETA with an apology if not.`;
-    case 'PRODUCT_ENQUIRY':
+    case 'PRODUCT_ENQUIRY': {
+      const routedRep = cityTag && CITY_ROUTING[cityTag];
+      if (routedRep) {
+        return `Website/sales-lead enquiry tagged [${cityTag}] — forward to ${routedRep} with a short intro note rather than answering directly.`;
+      }
       return "If it's a simple factual/compatibility question, answer directly using the spec sheet (match the customer's exact figures). If it's a sales lead, trial request, or needs product expertise, forward internally to the relevant specialist with a short intro note.";
+    }
     case 'SUPPLIER_VENDOR':
       return 'Route to purchasing/procurement contact for parts sourcing follow-up.';
     case 'INTERNAL':

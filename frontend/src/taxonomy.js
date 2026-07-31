@@ -1,8 +1,11 @@
 export const CATEGORY_LABELS = {
+  PRODUCT_COMPLAINT: 'Product complaint',
   EQUIPMENT_FAULT: 'Equipment fault',
   BACKORDER_NOTICE: 'Backorder notice',
   PO_ETA_REQUEST: 'PO / ETA request',
+  RETURNS_CREDIT: 'Returns / credit',
   INVOICE_BILLING: 'Invoice / billing',
+  LOGISTICS_FREIGHT: 'Logistics / freight',
   QUOTE_PRICING: 'Quote / pricing',
   PRODUCT_ENQUIRY: 'Product enquiry',
   SUPPLIER_VENDOR: 'Supplier / vendor',

@@ -61,10 +61,13 @@ async function runPollOnce() {
 }
 
 /**
- * Start a scheduled poll (default every 5 minutes). No-op if Graph credentials
- * aren't configured, so the app runs fine in demo/seed-only mode.
+ * Start a scheduled poll (default every minute — override with
+ * POLL_CRON_EXPRESSION, e.g. '*\/5 * * * *' for every 5 minutes, if
+ * per-minute polling turns out to be more than the mailbox's volume needs).
+ * No-op if Graph credentials aren't configured, so the app runs fine in
+ * demo/seed-only mode.
  */
-function startScheduledPolling(cronExpression = '*/5 * * * *') {
+function startScheduledPolling(cronExpression = process.env.POLL_CRON_EXPRESSION || '* * * * *') {
   if (!isGraphConfigured()) {
     console.log('[graph-poller] Not configured (missing TENANT_ID/CLIENT_ID/CLIENT_SECRET/MAILBOX) — skipping live polling.');
     return null;

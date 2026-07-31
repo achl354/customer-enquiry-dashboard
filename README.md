@@ -186,8 +186,11 @@ registration:
    MAILBOX=sales@jdhealthcare.com.au
    ```
 6. Restart the backend. It will log `[graph-poller] Scheduled polling
-   started` and begin ingesting new mail every 5 minutes. Trigger a poll
-   immediately with `curl -X POST localhost:4000/api/ingest/run`.
+   started` and begin ingesting new mail **every minute** by default (set
+   `POLL_CRON_EXPRESSION` to loosen this, e.g. `*/5 * * * *` for every 5
+   minutes, if per-minute polling turns out to be more than the mailbox's
+   volume needs). Trigger a poll immediately with
+   `curl -X POST localhost:4000/api/ingest/run`.
 
 Without these env vars set, the app runs fine in seed-only/demo mode — the
 poller silently no-ops.

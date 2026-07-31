@@ -54,13 +54,15 @@ const KNOWN_LOGISTICS_DOMAINS = ['steadfastlogistics.com.au', 'packsend.com.au',
 const KNOWN_NOISE_SENDERS = ['quarantine@messaging.microsoft.com', 'learntocare.com.au'];
 
 // City tag in "[CITY] Enquiry from JD Healthcare Group Website" subjects ->
-// the territory rep it gets forwarded to. Confirmed from real forwards in
-// Sent Items; deliberately not exhaustive (unmapped cities just show no rep).
+// the territory rep it gets forwarded to. Corrected directly by the business
+// owner (2026-07-31) — this is the authoritative table, not inferred from
+// email samples.
 const CITY_ROUTING = {
   SYDNEY: 'Simon White',
-  MELBOURNE: 'Atul Gupta / Allan Baker',
+  MELBOURNE: 'Allan Baker / Paul',
   ADELAIDE: 'Miffy Boden',
-  PERTH: 'Edan Hanley / Rhys Hosgood',
+  PERTH: 'Edan Hanley', // WA
+  HOBART: 'Atul Gupta', // Tas
   NEWCASTLE: 'Minh-Thu Cao Xuan',
   AUCKLAND: 'Medix21 (external distributor)',
 };
@@ -94,6 +96,8 @@ const RETURNS_SIGNALS = ['goods return', 'credit note', 'return label', 'item or
 const PRICE_DISCREPANCY_SIGNALS = ['price discrepancy', 'amended po', 'kindly update the pricing'];
 
 const LOGISTICS_SIGNALS = ['consignment', 'proof of delivery', 'redirect', 'pickup confirmation', 'pod attached'];
+
+const TRIAL_SIGNALS = ['trial request', 'trial of', 'would like to trial', 'request a trial', 'book a trial'];
 
 function domainOf(email) {
   if (!email) return '';
@@ -225,6 +229,7 @@ function classify(email) {
   const poNumber = extractPoNumber(text);
   const quoteNumber = extractQuoteNumber(text);
   const facility = isInternalSender ? null : orgNameForDomain(senderDomain);
+  const isTrialRequest = category === 'PRODUCT_ENQUIRY' && includesAny(text, TRIAL_SIGNALS);
 
   // --- Suggested action ---
   const suggestedAction = suggestedActionFor(category, {
@@ -234,6 +239,7 @@ function classify(email) {
     isSelfResolvedFeedback,
     isPriceDiscrepancy,
     cityTag,
+    isTrialRequest,
   });
 
   return {
@@ -254,10 +260,10 @@ function classify(email) {
 // sales@jdhealthcare.com.au (see backend/docs/response-patterns.md), not
 // generic guesses — e.g. PO/ETA and equipment-fault replies both route
 // through an internal check before anything goes back to the customer.
-function suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfResolvedFeedback, isPriceDiscrepancy, cityTag }) {
+function suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfResolvedFeedback, isPriceDiscrepancy, cityTag, isTrialRequest }) {
   switch (category) {
     case 'PRODUCT_COMPLAINT':
-      return 'Formal/adverse-event complaint — route to Andrew Lau (or quality contact), ask the customer to discontinue use, and capture the product code, LOT number, and expiry before responding further.';
+      return 'Formal/adverse-event complaint — route to Graham Lade and Scott Borresen, ask the customer to discontinue use, and capture the product code, LOT number, and expiry before responding further.';
     case 'EQUIPMENT_FAULT':
       if (isSelfResolvedFeedback) {
         return 'Customer already resolved this themselves and is sharing feedback — reply warmly, thank them, and address any specific detail they raised (e.g. sizing). No escalation needed unless they request a replacement part.';
@@ -280,6 +286,9 @@ function suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfR
       return `Confirm current stock and pricing with the sales rep${quoteNumber ? ` for quote ${quoteNumber}` : ''} before replying — send the quote if in stock, or a specific backorder ETA with an apology if not.`;
     case 'PRODUCT_ENQUIRY': {
       const routedRep = cityTag && CITY_ROUTING[cityTag];
+      if (isTrialRequest) {
+        return `Trial request — route to Graham Lade and the responsible territory rep${routedRep ? ` (${routedRep})` : ''} rather than answering directly.`;
+      }
       if (routedRep) {
         return `Website/sales-lead enquiry tagged [${cityTag}] — forward to ${routedRep} with a short intro note rather than answering directly.`;
       }

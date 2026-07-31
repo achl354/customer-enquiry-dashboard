@@ -103,14 +103,17 @@ Price: $2.00 + GST each
 **Product enquiries / sales leads** — many are *not* answered by the
 sales@ team directly. They're forwarded internally to a named specialist
 with a one-line intro: *"Could you please assist [name] when you get a
-chance?"* — routing depends on topic (lifters/trials → Michael; general
-product enquiries → Edan; equipment sourcing/faults → Scott/purchasing).
-Only simple factual questions (e.g. cleaning instructions from a manual)
-get answered directly by the ops team. Website contact-form enquiries carry
-a city tag in the subject — `"[SYDNEY] Enquiry from JD Healthcare Group
-Website"` — which maps directly to a territory rep (see routing table
-below); "New sales lead for: `<product>` - JD Healthcare Group" subjects are
-the same pattern, always forwarded, never answered directly.
+chance?"* — routing depends on topic (lifters → Michael Skerl; general
+product enquiries → the territory rep; equipment sourcing/faults →
+Scott/purchasing). **Trial requests specifically route to Graham Lade and
+the responsible territory rep** (authoritative, per the business owner —
+see routing table below), regardless of product type. Only simple factual
+questions (e.g. cleaning instructions from a manual) get answered directly
+by the ops team. Website contact-form enquiries carry a city tag in the
+subject — `"[SYDNEY] Enquiry from JD Healthcare Group Website"` — which
+maps directly to a territory rep (see routing table below); "New sales
+lead for: `<product>` - JD Healthcare Group" subjects are the same
+pattern, always forwarded, never answered directly.
 
 **Returns/credit** — distinct from billing disputes: staff confirm the
 returned item was received and process a credit note, with **no apology
@@ -127,8 +130,8 @@ end customer.
 **Formal product complaints / adverse events** — a different register from
 a routine spare-parts request or fault report. Language is procedural, not
 apologetic-first: ask the customer to discontinue use, and capture product
-code, LOT number, and expiry before anything else. Routes to a named
-quality contact (Andrew Lau in this mailbox), not Purchasing.
+code, LOT number, and expiry before anything else. Routes to Graham Lade and
+Scott Borresen, not Purchasing.
 
 **Price-discrepancy holds** — a PO can be "ON HOLD" for a pricing mismatch,
 not a stock delay — a materially different instruction to the customer.
@@ -147,16 +150,25 @@ manufacturer, not through an internal stock-check step.
 ## Geographic / territory routing table
 
 Website contact-form enquiries (subject tagged `[CITY]`) and general sales
-leads route to whichever rep covers that territory:
+leads route to whichever rep covers that territory. **This table is
+authoritative, provided directly by the business owner (Andrew Lau,
+2026-07-31) — not inferred from email samples.** It supersedes an earlier,
+partially-wrong version of this table (which had Melbourne and Tasmania
+mixed up and an extraneous name against Perth).
 
 | City tag | Routes to |
 |---|---|
 | SYDNEY | Simon White |
-| MELBOURNE | Atul Gupta / Allan Baker |
+| MELBOURNE | Allan Baker / Paul |
 | ADELAIDE | Miffy Boden |
-| PERTH | Edan Hanley / Rhys Hosgood |
+| PERTH (WA) | Edan Hanley |
+| HOBART (Tas) | Atul Gupta |
 | NEWCASTLE | Minh-Thu Cao Xuan |
 | AUCKLAND (NZ) | Medix21 — external distributor (Aaron Morgan), not internal staff |
+
+**Trial requests** are a distinct sub-case of a product/sales-lead enquiry:
+they route to **Graham Lade and the responsible territory rep** (looked up
+via the table above), not to the territory rep alone.
 
 ## Internal escalation is the default, not the exception
 
@@ -165,10 +177,11 @@ reading them — they're triaged to the right internal person first:
 - Stock/ETA questions → Purchasing (Scott Borresen/"Scotty")
 - Equipment faults/spare parts → Purchasing + manufacturer (or straight to
   the manufacturer's engineering team for a genuine design/engineering fault)
-- Formal complaints / adverse events → Andrew Lau (quality contact)
-- Sales leads / trial requests / specialised product questions → named
-  product specialists, often by territory (see table above) or by product
-  type (lifters/trials → Michael Skerl)
+- Formal complaints / adverse events → Graham Lade and Scott Borresen
+- Sales leads / specialised product questions → named product specialists,
+  often by territory (see table above) or by product type (lifters →
+  Michael Skerl); trial requests specifically → Graham Lade and the
+  responsible territory rep
 - Contract/special pricing → Jamia Vendivel (+ Lauren Langley for the
   ops-facing version)
 - Billing/remittances/credit notes → Accounts (`accounts@jdhealthcare.com.au`,

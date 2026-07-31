@@ -159,7 +159,7 @@ mixed up and an extraneous name against Perth).
 | City tag | Routes to |
 |---|---|
 | SYDNEY | Simon White |
-| MELBOURNE | Allan Baker / Paul |
+| MELBOURNE | Allan Baker / Paul McKay |
 | ADELAIDE | Miffy Boden |
 | PERTH (WA) | Edan Hanley |
 | HOBART (Tas) | Atul Gupta |

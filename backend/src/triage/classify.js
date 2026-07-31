@@ -59,7 +59,7 @@ const KNOWN_NOISE_SENDERS = ['quarantine@messaging.microsoft.com', 'learntocare.
 // email samples.
 const CITY_ROUTING = {
   SYDNEY: 'Simon White',
-  MELBOURNE: 'Allan Baker / Paul',
+  MELBOURNE: 'Allan Baker / Paul McKay',
   ADELAIDE: 'Miffy Boden',
   PERTH: 'Edan Hanley', // WA
   HOBART: 'Atul Gupta', // Tas

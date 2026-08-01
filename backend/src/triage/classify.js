@@ -54,18 +54,21 @@ const KNOWN_LOGISTICS_DOMAINS = ['steadfastlogistics.com.au', 'packsend.com.au',
 const KNOWN_NOISE_SENDERS = ['quarantine@messaging.microsoft.com', 'learntocare.com.au'];
 
 // City tag in "[CITY] Enquiry from JD Healthcare Group Website" subjects ->
-// the territory rep it gets forwarded to. Corrected directly by the business
-// owner (2026-07-31) — this is the authoritative table, not inferred from
-// email samples.
-const CITY_ROUTING = {
-  SYDNEY: 'Simon White',
-  MELBOURNE: 'Allan Baker / Paul McKay',
-  ADELAIDE: 'Miffy Boden',
-  PERTH: 'Edan Hanley', // WA
-  HOBART: 'Atul Gupta', // Tas
-  NEWCASTLE: 'Minh-Thu Cao Xuan',
-  AUCKLAND: 'Medix21 (external distributor)',
-};
+// which region gets forwarded a website/sales-lead enquiry. Deliberately NOT
+// naming individual reps here (2026-08-01) — that mapping has already needed
+// several corrections (Melbourne/Tasmania mixed up, a stray extra name on
+// Perth, a missing surname) and territory assignments change over time.
+// Safer to route by region and let whoever's actioning it fill in the
+// current rep's name themselves than to risk the draft asserting a stale or
+// wrong one. AUCKLAND is the one exception — Medix21 is an external
+// distributor company, not an individual rep, so that's stable to name.
+const ROUTABLE_CITY_TAGS = ['SYDNEY', 'MELBOURNE', 'ADELAIDE', 'PERTH', 'HOBART', 'NEWCASTLE', 'AUCKLAND'];
+const EXTERNAL_DISTRIBUTOR_BY_CITY = { AUCKLAND: 'Medix21 (external distributor)' };
+
+function repPlaceholderFor(cityTag) {
+  if (!cityTag || !ROUTABLE_CITY_TAGS.includes(cityTag)) return null;
+  return EXTERNAL_DISTRIBUTOR_BY_CITY[cityTag] || `[territory rep — ${cityTag}]`;
+}
 
 // A customer who already fixed the problem themselves and is sharing feedback
 // reads very differently from an active fault report, even when both mention
@@ -288,7 +291,7 @@ function suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfR
     case 'QUOTE_PRICING':
       return `Confirm current stock and pricing with the sales rep${quoteNumber ? ` for quote ${quoteNumber}` : ''} before replying — send the quote if in stock, or a specific backorder ETA with an apology if not.`;
     case 'PRODUCT_ENQUIRY': {
-      const routedRep = cityTag && CITY_ROUTING[cityTag];
+      const routedRep = repPlaceholderFor(cityTag);
       if (isTrialRequest) {
         return `Trial request — route to Graham Lade and the responsible territory rep${routedRep ? ` (${routedRep})` : ''} rather than answering directly.`;
       }
@@ -342,7 +345,7 @@ function draftReplyFor(category, { poNumber, quoteNumber, facility, isSelfResolv
     case 'QUOTE_PRICING':
       return `Hi there,\n\nThank you for contacting us. I'm confirming current stock and pricing${quoteNumber ? ` for quote ${quoteNumber}` : ''} and will send this through shortly.\n\n${SIGNATURE}`;
     case 'PRODUCT_ENQUIRY': {
-      const routedRep = cityTag && CITY_ROUTING[cityTag];
+      const routedRep = repPlaceholderFor(cityTag);
       if (isTrialRequest) {
         return `Hi Graham${routedRep ? `, ${routedRep}` : ''},\n\nCould you please assist with the trial request below${facility ? ` from ${facility}` : ''}?\n\nThanks,\n[Your name]`;
       }

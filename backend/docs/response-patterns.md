@@ -150,21 +150,24 @@ manufacturer, not through an internal stock-check step.
 ## Geographic / territory routing table
 
 Website contact-form enquiries (subject tagged `[CITY]`) and general sales
-leads route to whichever rep covers that territory. **This table is
-authoritative, provided directly by the business owner (Andrew Lau,
-2026-07-31) — not inferred from email samples.** It supersedes an earlier,
-partially-wrong version of this table (which had Melbourne and Tasmania
-mixed up and an extraneous name against Perth).
+leads route to whichever rep covers that territory. **As of 2026-08-01,
+the system deliberately does not assert individual rep names in
+classifier output** — an earlier version of this table named specific
+people and needed several corrections (Melbourne and Tasmania mixed up, an
+extraneous name against Perth, a missing surname), which is exactly the
+failure mode of hardcoding names that change over time. Instead,
+`suggestedAction`/`draftReply` use a placeholder like `[territory rep —
+SYDNEY]` for whoever is actioning the enquiry to fill in themselves.
 
 | City tag | Routes to |
 |---|---|
-| SYDNEY | Simon White |
-| MELBOURNE | Allan Baker / Paul McKay |
-| ADELAIDE | Miffy Boden |
-| PERTH (WA) | Edan Hanley |
-| HOBART (Tas) | Atul Gupta |
-| NEWCASTLE | Minh-Thu Cao Xuan |
-| AUCKLAND (NZ) | Medix21 — external distributor (Aaron Morgan), not internal staff |
+| SYDNEY | `[territory rep — SYDNEY]` (placeholder) |
+| MELBOURNE | `[territory rep — MELBOURNE]` (placeholder) |
+| ADELAIDE | `[territory rep — ADELAIDE]` (placeholder) |
+| PERTH (WA) | `[territory rep — PERTH]` (placeholder) |
+| HOBART (Tas) | `[territory rep — HOBART]` (placeholder) |
+| NEWCASTLE | `[territory rep — NEWCASTLE]` (placeholder) |
+| AUCKLAND (NZ) | Medix21 — external distributor, not internal staff (a company, not an individual, so this one's stable to name) |
 
 **Trial requests** are a distinct sub-case of a product/sales-lead enquiry:
 they route to **Graham Lade and the responsible territory rep** (looked up

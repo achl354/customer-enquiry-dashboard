@@ -175,15 +175,15 @@ function getEnquiry(id) {
   return rowToEnquiry(row);
 }
 
+const UPDATE_COLUMNS = { status: 'status', assignedTo: 'assigned_to', draftReply: 'draft_reply' };
+
 function updateEnquiry(id, updates) {
-  const allowed = ['status', 'assignedTo'];
   const sets = [];
   const params = { id, updatedAt: nowIso() };
 
-  for (const key of allowed) {
+  for (const key of Object.keys(UPDATE_COLUMNS)) {
     if (updates[key] !== undefined) {
-      const col = key === 'assignedTo' ? 'assigned_to' : key;
-      sets.push(`${col} = @${key}`);
+      sets.push(`${UPDATE_COLUMNS[key]} = @${key}`);
       params[key] = updates[key];
     }
   }

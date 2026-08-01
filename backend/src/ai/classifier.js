@@ -63,13 +63,27 @@ const RESPONSE_SCHEMA = {
       type: 'string',
       description: 'A concrete next step for the customer service staff member handling this, grounded in how this team actually operates (see system prompt). Prefer a specific routing instruction over a generic one.',
     },
+  },
+  required: ['category', 'priority', 'confidence', 'extractedFields', 'reasoning', 'suggestedAction'],
+  additionalProperties: false,
+};
+
+// Separate, on-demand-only schema — draftReply used to be generated on every
+// classification call, which meant paying for a full draft even on
+// enquiries nobody ever opens (ignored, low-priority, resolved via Outlook
+// flag before a human looks at it). Splitting it out means that cost is
+// only paid when staff actually click "Generate draft" on one they're
+// working. See generateDraft() below.
+const DRAFT_RESPONSE_SCHEMA = {
+  type: 'object',
+  properties: {
     draftReply: {
       ...nullableString,
       description:
         'A ready-to-send draft email in the house style (see system prompt): a direct customer reply, an immediate customer acknowledgment (complaints/genuine faults — separate from the internal routing in suggestedAction), or a short internal handoff/forward note for enquiries that are never answered directly. Null for INTERNAL/SPAM_NOTIFICATION/UNCLASSIFIED, or for fully-automated "do not reply" system notifications where no message is ever sent.',
     },
   },
-  required: ['category', 'priority', 'confidence', 'extractedFields', 'reasoning', 'suggestedAction', 'draftReply'],
+  required: ['draftReply'],
   additionalProperties: false,
 };
 
@@ -95,15 +109,6 @@ const SYSTEM_PROMPT = `You triage incoming emails for sales@jdhealthcare.com.au,
 ## Tone and reply structure (for suggestedAction grounding)
 Staff replies follow: greeting by first name -> "Thank you for contacting us." -> category-specific body -> apology line if there was a delay -> close -> signature (currently "Operations Coordinator", was "Client Services Executive" earlier — titles change over time, don't assume a fixed one). Tone is warm and relationship-driven, not purely transactional. A large share of enquiries are actually routed to the right internal person rather than answered directly by whoever reads the inbox — reflect that in suggestedAction when applicable (say who to route to, not just "reply to customer").
 
-## Drafting draftReply
-Write a complete, ready-to-send draft — the staff member reviews and sends it, not writes from scratch. Three distinct shapes depending on the category:
-
-- **Direct customer reply** (PO_ETA_REQUEST, RETURNS_CREDIT, INVOICE_BILLING, QUOTE_PRICING, BACKORDER_NOTICE, LOGISTICS_FREIGHT, or a PRODUCT_ENQUIRY with no city tag/trial request): write the actual reply to the customer, following the house structure above. Greet them by first name if you can identify one from the sender name or body (e.g. "Hi Rebecca,"), otherwise "Hi there,". Reference the specific PO/quote number, facility, or product mentioned. Since you don't know internal stock/dispatch status, phrase anything that depends on it as what staff will confirm (e.g. "I'm just confirming the dispatch status with our warehouse team and will follow up shortly with a firm date") rather than inventing a fake status. Close with "Kind regards,\n[Your name]\nOperations Coordinator\nJD Healthcare Group".
-- **Immediate customer acknowledgment** (PRODUCT_COMPLAINT, and EQUIPMENT_FAULT that's a genuine fault, not self-resolved feedback): the customer is left waiting on something wrong with a product, so reply to them directly and immediately rather than routing first — real Sent Items show this happens before any internal technical sign-off comes back. Thank them for reporting it, and: for PRODUCT_COMPLAINT, ask them to have the customer discontinue use and provide the exact product code, LOT number, and expiry; for EQUIPMENT_FAULT, acknowledge the fault and what info you need (e.g. photos, serial number). Do NOT invent a technical diagnosis or root cause you don't know yet — just say staff are looking into it and will follow up with next steps as soon as possible. This is separate from suggestedAction, which still tells staff to route the investigation internally (e.g. to Graham Lade and Scott Borresen) — draftReply here is only the immediate customer-facing acknowledgment, not that internal step.
-- **Internal handoff/routing note** (a PRODUCT_ENQUIRY with a city tag or trial request, SUPPLIER_VENDOR): write the short internal intro note staff actually send, in the observed style — e.g. "Hi [territory rep — SYDNEY],\n\nCould you please assist [customer name] with the enquiry below when you get a chance?\n\nThanks,\n[Your name]" — addressed using the region placeholder (or a named person only for the specific cases the system prompt calls out by name, e.g. Graham Lade/Scott Borresen for complaints, Medix21 for Auckland). These categories are never answered directly to the customer at all, so no acknowledgment reply is needed here.
-
-Set draftReply to null for INTERNAL, SPAM_NOTIFICATION, or UNCLASSIFIED, and also for fully-automated "PLEASE DO NOT REPLY" system notifications (e.g. a government procurement system delivering a new PO) where the only real action is internal processing, not a reply or handoff email to anyone.
-
 ## Priority
 URGENT: genuine equipment faults (not self-resolved), formal complaints, or explicit urgency (subject says URGENT/ASAP, or Outlook importance is high).
 HIGH: backorder notices, price-discrepancy holds, or repeat/overdue PO chases ("resend", "still outstanding").
@@ -111,6 +116,18 @@ LOW: internal threads, spam, routine supplier correspondence.
 NORMAL: everything else, including self-resolved feedback and routine PO/ETA/quote requests.
 
 Be honest about confidence — if the email is ambiguous or doesn't clearly fit a category, say so with a lower confidence score rather than forcing a confident-sounding guess.`;
+
+// Used only by generateDraft() — a separate, on-demand call (see below), so
+// this is never paid for on enquiries nobody ends up acting on.
+const DRAFT_SYSTEM_PROMPT = `You write draft emails for customer service staff at sales@jdhealthcare.com.au, a durable medical equipment supplier serving Australian health departments and hospitals. You're given an email that's already been classified — write a complete, ready-to-send draft that staff review and send, not write from scratch. Three distinct shapes depending on the category:
+
+- **Direct customer reply** (PO_ETA_REQUEST, RETURNS_CREDIT, INVOICE_BILLING, QUOTE_PRICING, BACKORDER_NOTICE, LOGISTICS_FREIGHT, or a PRODUCT_ENQUIRY with no city tag/trial request): write the actual reply to the customer. Greeting by first name if you can identify one from the sender name or body (e.g. "Hi Rebecca,"), otherwise "Hi there,". "Thank you for contacting us." as the near-universal opening line. Reference the specific PO/quote number, facility, or product mentioned. Since you don't know internal stock/dispatch status, phrase anything that depends on it as what staff will confirm (e.g. "I'm just confirming the dispatch status with our warehouse team and will follow up shortly with a firm date") rather than inventing a fake status. Close with "Kind regards,\n[Your name]\nOperations Coordinator\nJD Healthcare Group".
+- **Immediate customer acknowledgment** (PRODUCT_COMPLAINT, and EQUIPMENT_FAULT that's a genuine fault, not self-resolved feedback): the customer is left waiting on something wrong with a product, so reply to them directly and immediately rather than routing first — real Sent Items show this happens before any internal technical sign-off comes back. Thank them for reporting it, and: for PRODUCT_COMPLAINT, ask them to have the customer discontinue use and provide the exact product code, LOT number, and expiry; for EQUIPMENT_FAULT, acknowledge the fault and what info you need (e.g. photos, serial number). Do NOT invent a technical diagnosis or root cause you don't know yet — just say staff are looking into it and will follow up with next steps as soon as possible. This is separate from the internal routing (e.g. to Graham Lade and Scott Borresen) — this draft is only the immediate customer-facing acknowledgment, not that internal step.
+- **Internal handoff/routing note** (a PRODUCT_ENQUIRY with a city tag or trial request, SUPPLIER_VENDOR): write the short internal intro note staff actually send, in the observed style — e.g. "Hi [territory rep — SYDNEY],\n\nCould you please assist [customer name] with the enquiry below when you get a chance?\n\nThanks,\n[Your name]" — addressed using a region placeholder like "[territory rep — CITY]" (never assert an individual's name here — territory assignments change over time and get it wrong easily) except for the specific stable cases: Graham Lade/Scott Borresen for complaints, Medix21 for Auckland (an external distributor company, not an individual). These categories are never answered directly to the customer at all, so no acknowledgment reply is needed here.
+
+Set draftReply to null for INTERNAL, SPAM_NOTIFICATION, or UNCLASSIFIED, and also for fully-automated "PLEASE DO NOT REPLY" system notifications (e.g. a government procurement system delivering a new PO) where the only real action is internal processing, not a reply or handoff email to anyone.
+
+If a "Thread history" section is included below, this enquiry already has prior replies in it — read it first. Continue the conversation naturally: don't re-introduce yourself or repeat information already given, acknowledge anything already promised or asked, and reflect the actual current state of the exchange rather than drafting as if this were the first contact.`;
 
 function isConfigured() {
   return !!process.env.ANTHROPIC_API_KEY;
@@ -187,8 +204,73 @@ async function classify(email, model = MODEL) {
       cityTag: parsed.extractedFields.cityTag,
     },
     suggestedAction: parsed.suggestedAction,
-    draftReply: parsed.draftReply,
   };
 }
 
-module.exports = { classify, isConfigured, CATEGORIES, PRIORITIES };
+function buildDraftUserContent(email, classification, threadHistory) {
+  const lines = [
+    `Category: ${classification.category}`,
+    `Extracted fields: ${JSON.stringify(classification.extractedFields || {})}`,
+    '',
+    `Subject: ${email.subject || '(no subject)'}`,
+    `From: ${email.senderName ? `${email.senderName} <${email.senderEmail}>` : email.senderEmail}`,
+    `To/Recipients: ${(email.recipients || []).join(', ')}`,
+    '',
+    'Body:',
+    email.bodyPreview || '(empty)',
+  ];
+
+  if (threadHistory && threadHistory.length > 0) {
+    lines.push(
+      '',
+      "## Thread history (this enquiry already has replies — read these before drafting)"
+    );
+    for (const msg of threadHistory) {
+      lines.push(`--- ${msg.sentAt} — ${msg.senderName || msg.senderEmail} to ${msg.recipients.join(', ')} ---`);
+      lines.push(msg.bodyPreview || '(empty)');
+    }
+  }
+
+  return lines.join('\n');
+}
+
+/**
+ * Generate a draft reply/handoff note for an already-classified enquiry.
+ * Separate from classify() and only called on-demand (e.g. when staff open
+ * an enquiry and click "Generate draft") — splitting this out means the
+ * cost of drafting is only paid for enquiries someone actually acts on,
+ * not every single classified email.
+ *
+ * @param {object} email - subject/body/sender/recipients, as classify() takes
+ * @param {object} classification - { category, extractedFields } from classify()
+ * @param {Array} [threadHistory] - prior messages in the same conversation,
+ *   chronological, from graphClient.fetchConversationMessages() — omit if
+ *   there's no reply yet or Graph isn't configured.
+ */
+async function generateDraft(email, classification, threadHistory = []) {
+  const anthropic = getClient();
+
+  const response = await anthropic.messages.create({
+    model: MODEL,
+    max_tokens: 1024,
+    thinking: { type: 'disabled' },
+    output_config: {
+      effort: 'medium',
+      format: { type: 'json_schema', schema: DRAFT_RESPONSE_SCHEMA },
+    },
+    system: [{ type: 'text', text: DRAFT_SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+    messages: [{ role: 'user', content: buildDraftUserContent(email, classification, threadHistory) }],
+  });
+
+  if (response.stop_reason === 'refusal') {
+    throw new Error('Claude declined to draft a reply for this email (safety refusal)');
+  }
+
+  const textBlock = response.content.find((b) => b.type === 'text');
+  if (!textBlock) throw new Error('No text content in Claude response');
+
+  const parsed = JSON.parse(textBlock.text);
+  return parsed.draftReply;
+}
+
+module.exports = { classify, generateDraft, isConfigured, CATEGORIES, PRIORITIES };

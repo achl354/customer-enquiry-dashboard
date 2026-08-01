@@ -164,4 +164,40 @@ async function fetchReplyStatus(items) {
   return results;
 }
 
-module.exports = { isConfigured, fetchMessagesSince, fetchMessageFlags, fetchReplyStatus, toRawEmail };
+/**
+ * Fetch every message in a conversation, chronologically, across the whole
+ * mailbox (not folder-scoped, since a conversation spans Inbox/Sent Items/
+ * elsewhere) — used for on-demand draft generation so a follow-up draft can
+ * account for what's already been said instead of drafting blind. Single
+ * request, not batched — only called one enquiry at a time (when staff
+ * click "Generate draft"), unlike the bulk per-poll flag/reply syncs.
+ */
+async function fetchConversationMessages(conversationId) {
+  const token = await getAccessToken();
+  const mailbox = encodeURIComponent(process.env.MAILBOX);
+  const select = 'subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview';
+  const url = `${GRAPH_BASE}/users/${mailbox}/messages?$filter=conversationId eq '${encodeURIComponent(conversationId)}'&$select=${select}&$orderby=receivedDateTime asc&$top=25`;
+
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Graph API error ${res.status}: ${body}`);
+  }
+  const data = await res.json();
+  return (data.value || []).map((msg) => ({
+    senderName: msg.from?.emailAddress?.name || null,
+    senderEmail: msg.from?.emailAddress?.address || null,
+    recipients: (msg.toRecipients || []).map((r) => r.emailAddress?.address).filter(Boolean),
+    sentAt: msg.sentDateTime || msg.receivedDateTime,
+    bodyPreview: msg.bodyPreview || '',
+  }));
+}
+
+module.exports = {
+  isConfigured,
+  fetchMessagesSince,
+  fetchMessageFlags,
+  fetchReplyStatus,
+  fetchConversationMessages,
+  toRawEmail,
+};

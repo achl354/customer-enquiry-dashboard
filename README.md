@@ -128,8 +128,13 @@ a suggested action grounded in `backend/docs/response-patterns.md`.
 
 ## AI-drafted replies
 
-Every enquiry is also given a `draftReply` at classification time — shown
-on the enquiry detail page as an editable, copyable text box:
+`draftReply` is generated **on demand**, not automatically at classification
+time — staff click "Generate draft" on the enquiry detail page, which calls
+`POST /api/enquiries/:id/draft` (`generateDraft` in `ai/classifier.js`, a
+separate API call from classification). This is a deliberate cost choice:
+a large share of enquiries (ignored, low-priority, resolved via the Outlook
+flag before anyone opens them) never need a draft at all, so this way
+staff only pay for one when they're actually acting on it.
 
 - **Direct-reply categories** (PO/ETA, returns, invoice, quotes, backorder,
   logistics, simple product enquiries) get an actual ready-to-send customer
@@ -143,18 +148,38 @@ on the enquiry detail page as an editable, copyable text box:
   covered separately by `suggestedAction`.
 - **Routing-only categories** (trial requests, website/sales-lead
   enquiries, supplier/vendor correspondence) get a short internal handoff
-  note addressed to the correct named person(s) per the routing rules in
-  `backend/docs/response-patterns.md`, instead of a customer-facing reply —
-  these are never answered directly at all.
-- `draftReply` is `null` for `INTERNAL`/`SPAM_NOTIFICATION`/`UNCLASSIFIED`,
-  and for fully-automated "do not reply" system notifications where no
-  message is ever sent.
-- The rule-based fallback classifier also produces a draft (a simple
-  template using extracted fields), so this never silently disappears if
-  the AI classifier is unavailable — it's just less personalized.
+  note using a region placeholder (e.g. `[territory rep — SYDNEY]`) rather
+  than an individual's name — see "Territory rep placeholders" below.
+- **Already-replied threads get thread history included.** If the enquiry
+  has a `conversationId` and Graph is configured, the endpoint fetches every
+  prior message in that conversation (`fetchConversationMessages` in
+  `graph/client.js`) and includes it in the drafting prompt, so a follow-up
+  draft continues the conversation naturally instead of repeating or
+  contradicting what's already been said. Best-effort — a Graph failure
+  here doesn't block drafting, just means less context.
+- The "Generate draft" button/endpoint won't fire for
+  `INTERNAL`/`SPAM_NOTIFICATION`/`UNCLASSIFIED` — nothing to draft there.
+- The rule-based fallback classifier still produces a draft automatically
+  (a simple template using extracted fields) whenever it classifies an
+  enquiry — that's a free template, not an API call, so there's no cost
+  reason to withhold it.
 - Staff review and edit before sending; there's no auto-send integration —
   drafts are copied into Outlook manually via the "Copy to clipboard"
   button.
+
+## Territory rep placeholders
+
+`suggestedAction`/`draftReply` never assert an individual's name for
+territory-based routing (e.g. "forward to the Sydney rep") — instead they
+use a placeholder like `[territory rep — SYDNEY]` for whoever is actioning
+the enquiry to fill in. An earlier version named specific people and
+needed several corrections as territory assignments changed; routing by
+region and leaving the name to a human avoids repeating that. The one
+exception is Auckland, which routes to Medix21 (an external distributor
+company, not an individual) — that's stable enough to name directly.
+Formal complaints still route to Graham Lade and Scott Borresen by name,
+since that came directly from the business owner as a fixed escalation
+path, not an inferred territory mapping.
 
 ## Live ingestion setup (Microsoft Graph)
 

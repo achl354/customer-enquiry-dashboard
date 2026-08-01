@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getEnquiry, updateEnquiry } from '../api';
+import { getEnquiry, updateEnquiry, generateDraft } from '../api';
 import { PriorityBadge, StatusBadge, CategoryPill } from '../components/Badges';
 import { STATUS_OPTIONS, statusLabel } from '../taxonomy';
+
+// Matches backend/src/routes/enquiries.js's NO_DRAFT_CATEGORIES — these
+// never get a draft (nothing to send/hand off), so no point showing the
+// panel or letting staff click a button that will just 400.
+const NO_DRAFT_CATEGORIES = ['INTERNAL', 'SPAM_NOTIFICATION', 'UNCLASSIFIED'];
 
 export default function Detail() {
   const { id } = useParams();
@@ -12,6 +17,8 @@ export default function Detail() {
   const [saving, setSaving] = useState(false);
   const [draftText, setDraftText] = useState('');
   const [copied, setCopied] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [draftError, setDraftError] = useState(null);
 
   useEffect(() => {
     getEnquiry(id)
@@ -27,6 +34,20 @@ export default function Detail() {
     await navigator.clipboard.writeText(draftText);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  }
+
+  async function handleGenerateDraft() {
+    setGenerating(true);
+    setDraftError(null);
+    try {
+      const updated = await generateDraft(id);
+      setEnquiry(updated);
+      setDraftText(updated.draftReply || '');
+    } catch (e) {
+      setDraftError(e.message);
+    } finally {
+      setGenerating(false);
+    }
   }
 
   async function handleStatusChange(e) {
@@ -104,19 +125,34 @@ export default function Detail() {
             )}
           </div>
 
-          {enquiry.draftReply && (
+          {!NO_DRAFT_CATEGORIES.includes(enquiry.category) && (
             <div className="panel">
               <h3>Draft reply / handoff note</h3>
-              <textarea
-                className="draft-textarea"
-                value={draftText}
-                onChange={(e) => setDraftText(e.target.value)}
-                rows={10}
-              />
-              <div className="draft-actions">
-                <button type="button" onClick={handleCopyDraft}>{copied ? 'Copied!' : 'Copy to clipboard'}</button>
-                <span className="draft-hint">Review before sending — edit freely, this is a starting point.</span>
-              </div>
+              {enquiry.draftReply ? (
+                <>
+                  <textarea
+                    className="draft-textarea"
+                    value={draftText}
+                    onChange={(e) => setDraftText(e.target.value)}
+                    rows={10}
+                  />
+                  <div className="draft-actions">
+                    <button type="button" onClick={handleCopyDraft}>{copied ? 'Copied!' : 'Copy to clipboard'}</button>
+                    <span className="draft-hint">Review before sending — edit freely, this is a starting point.</span>
+                  </div>
+                </>
+              ) : (
+                <div className="draft-actions">
+                  <button type="button" onClick={handleGenerateDraft} disabled={generating}>
+                    {generating ? 'Generating…' : 'Generate draft'}
+                  </button>
+                  {draftError ? (
+                    <span className="draft-hint" style={{ color: 'var(--status-critical)' }}>{draftError}</span>
+                  ) : (
+                    <span className="draft-hint">Only generated when you ask for it — no draft has been created yet.</span>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </div>

@@ -34,6 +34,10 @@ export function updateEnquiry(id, updates) {
   });
 }
 
+export function generateDraft(id) {
+  return request(`/enquiries/${encodeURIComponent(id)}/draft`, { method: 'POST' });
+}
+
 export function getOverviewStats() {
   return request('/stats/overview');
 }

@@ -81,7 +81,7 @@ export default function Overview() {
 
   return (
     <div>
-      <h2>Team overview</h2>
+      <h2>Mailbox overview</h2>
 
       <div className="stat-grid">
         <div className="stat-tile stat-tile-in" style={{ animationDelay: '0ms' }}>

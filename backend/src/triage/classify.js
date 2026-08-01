@@ -95,6 +95,23 @@ const COMPLAINT_SIGNALS = ['customer complaint', 'discontinue use', 'lot number'
 
 const RETURNS_SIGNALS = ['goods return', 'credit note', 'return label', 'item order in error', 'returned items', 'cancellation', 'unable to process', 'restocking fee'];
 
+// A flat "we don't stock this" decline reads as a routine product enquiry,
+// but a stale "Purchase Order"/"PO" reference elsewhere in the subject (left
+// over from an unrelated admin thread) can otherwise pull it into
+// PO_ETA_REQUEST — checked ahead of that branch so the decline wins.
+const DECLINE_SIGNALS = ['not a product that we', 'not a product we supply', "isn't a product we", "aren't a product we"];
+
+// Suppliers/manufacturers we correspond with about parts sourcing, keyed by
+// whichever end of the conversation is external — checked ahead of
+// PARTS_SIGNALS below so "Parts from BMB" (to a manufacturer contact) routes
+// to SUPPLIER_VENDOR rather than being read as a customer-facing part
+// lookup. Kept separate from KNOWN_SUPPLIER_DOMAINS (sender-side only) since
+// that list includes at least one domain (activtec.com.au) that also places
+// orders WITH us — i.e. sometimes acts as a customer, not just a supplier —
+// so treating it as supplier-only in both directions would misclassify
+// those threads.
+const KNOWN_SUPPLIER_RECIPIENT_DOMAINS = ['movetec.com.au', 'rihaindustries.com'];
+
 // Distinct from a genuine stock backorder: the order is held because the
 // customer's PO doesn't match current pricing, not because of a supply delay.
 const PRICE_DISCREPANCY_SIGNALS = ['price discrepancy', 'amended po', 'kindly update the pricing'];
@@ -194,7 +211,7 @@ function classify(email) {
     // otherwise get swallowed by the QUOTE_PRICING check below).
     category = 'PRODUCT_ENQUIRY';
   } else if (
-    includesAny(text, ['not inflating', 'not turning', 'malfunction', 'not working', 'stopped working', 'fault', 'faulty', 'broken', 'digs into', 'does not fit', "doesn't fit", 'failure', 'leaking', 'problem with', 'repair', 'damage', 'damaged'])
+    includesAny(text, ['not inflating', 'not turning', 'not charging', 'malfunction', 'not working', 'stopped working', 'fault', 'faulty', 'broken', 'digs into', 'does not fit', "doesn't fit", 'failure', 'leaking', 'problem with', 'repair', 'damage', 'damaged'])
   ) {
     category = 'EQUIPMENT_FAULT';
   } else if (includesAny(text, ['backorder', 'back order', 'container shipment'])) {
@@ -205,6 +222,10 @@ function classify(email) {
     category = 'INVOICE_BILLING';
   } else if (KNOWN_LOGISTICS_DOMAINS.some((d) => senderDomain === d) || includesAny(text, LOGISTICS_SIGNALS)) {
     category = 'LOGISTICS_FREIGHT';
+  } else if (includesAny(text, DECLINE_SIGNALS)) {
+    // Checked ahead of PO_ETA_REQUEST — a stale "Purchase Order"/"PO"
+    // reference elsewhere in the subject shouldn't outrank a flat decline.
+    category = 'PRODUCT_ENQUIRY';
   } else if (
     includesAny(text, ['purchase order', 'po#', 'eta', 'dispatch', 'despatch', 'delivery date', 'need by date', 'awaiting payment', 'on hold']) ||
     Object.keys(KNOWN_ORG_DOMAINS).some((d) => senderDomain === d || senderDomain.endsWith(`.${d}`))
@@ -214,6 +235,8 @@ function classify(email) {
     category = 'QUOTE_PRICING';
   } else if (includesAny(text, ORDER_CONFIRMATION_SIGNALS)) {
     category = 'ORDER_CONFIRMATION';
+  } else if (KNOWN_SUPPLIER_RECIPIENT_DOMAINS.some((d) => recipients.some((r) => domainOf(r) === d))) {
+    category = 'SUPPLIER_VENDOR';
   } else if (includesAny(text, PARTS_SIGNALS)) {
     // Not its own category — a part lookup is answered the same way as any
     // other factual PRODUCT_ENQUIRY (see isPartLookup below), it just needs

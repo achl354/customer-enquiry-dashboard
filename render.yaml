@@ -24,12 +24,13 @@ services:
         value: production
       - key: POLL_CRON_EXPRESSION
         value: "* * * * *"
-      # SEED_ON_BOOT=true (server.js) re-seeds the 114-email demo dataset on
-      # every boot — removed now that the deploy pipeline and redesign have
-      # been confirmed working. Free tier has no persistent disk, so leaving
-      # it on would re-spend ~114 Claude API calls on every restart for the
-      # same demo data. Set SEED_ON_BOOT=true again temporarily if you need
-      # to re-populate the live URL for another look.
+      # TEMPORARY (again): re-enabled to repopulate the live URL for another
+      # look after the on-demand-drafting, thread-history, and territory-
+      # placeholder changes. Remove this once seen — free tier has no
+      # persistent disk, so leaving it on re-spends ~114 classification
+      # calls on every restart for the same demo data.
+      - key: SEED_ON_BOOT
+        value: "true"
       # Secrets — left blank on purpose (sync: false means Render prompts you
       # to fill these in via its dashboard rather than storing them in git).
       - key: ANTHROPIC_API_KEY

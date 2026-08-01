@@ -41,7 +41,14 @@ async function main() {
   console.log(`Seeded ${ingested} of ${emails.length} sample enquiries (some already present were skipped).`);
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+// Runs immediately when invoked as a CLI script (`npm run seed`), but not
+// when required as a module (e.g. server.js firing this in the background
+// after boot) — the caller decides when to actually run it.
+if (require.main === module) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
+
+module.exports = { main };

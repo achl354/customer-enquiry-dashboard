@@ -35,4 +35,17 @@ if (fs.existsSync(frontendDist)) {
 app.listen(PORT, () => {
   console.log(`Customer enquiry dashboard API listening on port ${PORT}`);
   startScheduledPolling();
+
+  // Opt-in, background-only demo seeding (e.g. Render free tier, which has
+  // no persistent disk and no shell access for a one-off command). Runs
+  // AFTER the server is already listening so the health check passes
+  // immediately regardless of how long seeding takes — the previous
+  // approach (chaining it into the start command) blocked startup long
+  // enough to fail Render's health check and the deploy with it.
+  if (process.env.SEED_ON_BOOT === 'true') {
+    require('../scripts/seed')
+      .main()
+      .then(() => console.log('[seed] Boot-time seed complete.'))
+      .catch((err) => console.error('[seed] Boot-time seed failed:', err.message));
+  }
 });

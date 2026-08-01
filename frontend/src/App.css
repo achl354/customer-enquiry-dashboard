@@ -16,7 +16,7 @@
 }
 
 .brand {
-  margin: 2px 8px 4px;
+  margin: 4px 8px 14px;
 }
 
 .brand-logo {
@@ -32,7 +32,7 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: rgba(255, 255, 255, 0.45);
-  margin: 4px 8px 18px;
+  margin: 0 8px 22px;
 }
 
 /* Grows to fill the sidebar's height so sidebar-footer sits pinned to the

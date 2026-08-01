@@ -375,8 +375,6 @@ function suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfR
   }
 }
 
-const SIGNATURE = 'Kind regards,\n[Your name]\nOperations Coordinator\nJD Healthcare Group';
-
 // Template-only fallback for when the AI classifier is unavailable — no NLP
 // available here, so these are generic placeholders staff fill in, not
 // personalized like the AI drafts. Still gives every enquiry *something*
@@ -387,47 +385,47 @@ function draftReplyFor(category, { poNumber, quoteNumber, facility, isSelfResolv
       // Real Sent Items show this goes to the customer immediately (discontinue
       // use + capture LOT/expiry), not routed internally first — the internal
       // step (Graham Lade/Scott Borresen) is already covered by suggestedAction.
-      return `Hi there,\n\nThank you for bringing this to our attention. Could you please ask the customer to discontinue use of the affected product in the meantime, and confirm the exact product code, LOT number, and expiry so we can investigate further?\n\nWe'll follow up with next steps as soon as possible.\n\n${SIGNATURE}`;
+      return `Hi there,\n\nThank you for bringing this to our attention. Could you please ask the customer to discontinue use of the affected product in the meantime, and confirm the exact product code, LOT number, and expiry so we can investigate further?\n\nWe'll follow up with next steps as soon as possible.`;
     case 'EQUIPMENT_FAULT':
       if (isSelfResolvedFeedback) {
-        return `Hi there,\n\nThank you for letting us know, and for the kind feedback — glad to hear it's sorted. Please don't hesitate to reach out if anything else comes up.\n\n${SIGNATURE}`;
+        return `Hi there,\n\nThank you for letting us know, and for the kind feedback — glad to hear it's sorted. Please don't hesitate to reach out if anything else comes up.`;
       }
-      return `Hi there,\n\nThank you for letting us know about this issue, and I'm sorry for the inconvenience. We're looking into replacement part availability internally and will follow up with next steps as soon as possible.\n\n${SIGNATURE}`;
+      return `Hi there,\n\nThank you for letting us know about this issue, and I'm sorry for the inconvenience. We're looking into replacement part availability internally and will follow up with next steps as soon as possible.`;
     case 'BACKORDER_NOTICE':
-      return `Hi there,\n\nThank you for the notice. We're checking container/stock status${poNumber ? ` for PO ${poNumber}` : ''} with our warehouse team and will follow up shortly with a revised delivery window. Apologies for the delay.\n\n${SIGNATURE}`;
+      return `Hi there,\n\nThank you for the notice. We're checking container/stock status${poNumber ? ` for PO ${poNumber}` : ''} with our warehouse team and will follow up shortly with a revised delivery window. Apologies for the delay.`;
     case 'PO_ETA_REQUEST':
       if (isPriceDiscrepancy) {
-        return `Hi there,\n\nThank you for contacting us. There are some price discrepancies on this order${poNumber ? ` (PO ${poNumber})` : ''} — kindly update the pricing accordingly and send us an amended PO so we can release it for dispatch.\n\n${SIGNATURE}`;
+        return `Hi there,\n\nThank you for contacting us. There are some price discrepancies on this order${poNumber ? ` (PO ${poNumber})` : ''} — kindly update the pricing accordingly and send us an amended PO so we can release it for dispatch.`;
       }
-      return `Hi there,\n\nThank you for contacting us. I'm just confirming the dispatch/container status${poNumber ? ` for PO ${poNumber}` : ''} with our warehouse team and will follow up shortly with a firm delivery date.\n\n${SIGNATURE}`;
+      return `Hi there,\n\nThank you for contacting us. I'm just confirming the dispatch/container status${poNumber ? ` for PO ${poNumber}` : ''} with our warehouse team and will follow up shortly with a firm delivery date.`;
     case 'RETURNS_CREDIT':
       if (isCancellation) {
-        return `Hi there,\n\nThank you for contacting us. I can confirm this order${poNumber ? ` (PO ${poNumber})` : ''} has been cancelled, and any refund due will be processed.\n\n${SIGNATURE}`;
+        return `Hi there,\n\nThank you for contacting us. I can confirm this order${poNumber ? ` (PO ${poNumber})` : ''} has been cancelled, and any refund due will be processed.`;
       }
-      return `Hi there,\n\nThank you for contacting us. I can confirm we've received the returned item(s) and the credit note is being processed.\n\n${SIGNATURE}`;
+      return `Hi there,\n\nThank you for contacting us. I can confirm we've received the returned item(s) and the credit note is being processed.`;
     case 'INVOICE_BILLING':
-      return `Hi there,\n\nThank you for contacting us. I'm checking our dispatch records for Proof of Delivery/billing details and will follow up shortly, looping in Accounts if needed.\n\n${SIGNATURE}`;
+      return `Hi there,\n\nThank you for contacting us. I'm checking our dispatch records for Proof of Delivery/billing details and will follow up shortly, looping in Accounts if needed.`;
     case 'LOGISTICS_FREIGHT':
-      return `Hi [courier contact],\n\nCould you please assist with the consignment/pickup detailed below${poNumber ? ` (PO ${poNumber})` : ''}?\n\nThanks,\n[Your name]`;
+      return `Hi [courier contact],\n\nCould you please assist with the consignment/pickup detailed below${poNumber ? ` (PO ${poNumber})` : ''}?`;
     case 'QUOTE_PRICING':
-      return `Hi there,\n\nThank you for contacting us. I'm confirming current stock and pricing${quoteNumber ? ` for quote ${quoteNumber}` : ''} and will send this through shortly.\n\n${SIGNATURE}`;
+      return `Hi there,\n\nThank you for contacting us. I'm confirming current stock and pricing${quoteNumber ? ` for quote ${quoteNumber}` : ''} and will send this through shortly.`;
     case 'ORDER_CONFIRMATION':
-      return `Hi there,\n\nThank you for your order${facility ? ` for ${facility}` : ''}${poNumber ? ` (PO ${poNumber})` : ''}. I'm confirming the account/payment details and will follow up shortly with next steps.\n\n${SIGNATURE}`;
+      return `Hi there,\n\nThank you for your order${facility ? ` for ${facility}` : ''}${poNumber ? ` (PO ${poNumber})` : ''}. I'm confirming the account/payment details and will follow up shortly with next steps.`;
     case 'PRODUCT_ENQUIRY': {
       const routedRep = repPlaceholderFor(cityTag);
       if (isTrialRequest) {
-        return `Hi Graham${routedRep ? `, ${routedRep}` : ''},\n\nCould you please assist with the trial request below${facility ? ` from ${facility}` : ''}?\n\nThanks,\n[Your name]`;
+        return `Hi Graham${routedRep ? `, ${routedRep}` : ''},\n\nCould you please assist with the trial request below${facility ? ` from ${facility}` : ''}?`;
       }
       if (routedRep) {
-        return `Hi ${routedRep},\n\nCould you please assist with the enquiry below${facility ? ` from ${facility}` : ''} when you get a chance?\n\nThanks,\n[Your name]`;
+        return `Hi ${routedRep},\n\nCould you please assist with the enquiry below${facility ? ` from ${facility}` : ''} when you get a chance?`;
       }
       if (isPartLookup) {
-        return `Hi there,\n\nThank you for contacting us. I'm confirming the part code, price, and current stock and will send this through shortly.\n\n${SIGNATURE}`;
+        return `Hi there,\n\nThank you for contacting us. I'm confirming the part code, price, and current stock and will send this through shortly.`;
       }
-      return `Hi there,\n\nThank you for contacting us.\n\n${SIGNATURE}`;
+      return `Hi there,\n\nThank you for contacting us.`;
     }
     case 'SUPPLIER_VENDOR':
-      return `Hi [purchasing contact],\n\nCould you please follow up on the parts sourcing enquiry below?\n\nThanks,\n[Your name]`;
+      return `Hi [purchasing contact],\n\nCould you please follow up on the parts sourcing enquiry below?`;
     default:
       return null;
   }

@@ -188,6 +188,17 @@ function listOpenEnquiriesForFlagSync() {
 }
 
 function overviewStats() {
+  // Real week-over-week volume comparison (by received_at), not a fabricated
+  // trend — used for the "Total enquiries" delta indicator on Overview.
+  const last7Days = db
+    .prepare("SELECT COUNT(*) as c FROM enquiries WHERE received_at >= datetime('now', '-7 days')")
+    .get().c;
+  const prev7Days = db
+    .prepare(
+      "SELECT COUNT(*) as c FROM enquiries WHERE received_at >= datetime('now', '-14 days') AND received_at < datetime('now', '-7 days')"
+    )
+    .get().c;
+
   const byCategory = db.prepare('SELECT category, COUNT(*) as count FROM enquiries GROUP BY category').all();
   const byStatus = db.prepare('SELECT status, COUNT(*) as count FROM enquiries GROUP BY status').all();
   const byPriority = db.prepare('SELECT priority, COUNT(*) as count FROM enquiries GROUP BY priority').all();
@@ -236,6 +247,8 @@ function overviewStats() {
     avgResolutionHours,
     byClassifiedBy: Object.fromEntries(byClassifiedBy.map((r) => [r.classified_by, r.count])),
     lowConfidenceCount,
+    last7Days,
+    prev7Days,
   };
 }
 

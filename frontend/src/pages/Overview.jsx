@@ -32,6 +32,13 @@ export default function Overview() {
     .filter((s) => stats.byStatus[s])
     .map((key) => ({ key, value: stats.byStatus[key], label: statusLabel(key) }));
 
+  const weeklyDelta = stats.last7Days - stats.prev7Days;
+  const trendDirection = weeklyDelta > 0 ? 'up' : weeklyDelta < 0 ? 'down' : 'flat';
+  const trendText =
+    weeklyDelta === 0
+      ? 'same as last week'
+      : `${weeklyDelta > 0 ? '+' : ''}${weeklyDelta} vs last week`;
+
   return (
     <div>
       <h2>Team overview</h2>
@@ -39,7 +46,10 @@ export default function Overview() {
       <div className="stat-grid">
         <div className="stat-tile">
           <div className="label">Total enquiries</div>
-          <div className="value">{stats.total}</div>
+          <div className="value-row">
+            <div className="value">{stats.total}</div>
+            <div className={`trend ${trendDirection}`}>{trendText}</div>
+          </div>
         </div>
         <div className="stat-tile">
           <div className="label">Open</div>
@@ -78,14 +88,16 @@ export default function Overview() {
         </div>
       )}
 
-      <div className="panel">
-        <h3>Enquiries by category</h3>
-        <BarList data={categoryData} />
-      </div>
+      <div className="chart-grid">
+        <div className="panel">
+          <h3>Enquiries by category</h3>
+          <BarList data={categoryData} />
+        </div>
 
-      <div className="panel">
-        <h3>Enquiries by status</h3>
-        <BarList data={statusData} colorFor={(key) => STATUS_COLORS[key]} />
+        <div className="panel">
+          <h3>Enquiries by status</h3>
+          <BarList data={statusData} colorFor={(key) => STATUS_COLORS[key]} />
+        </div>
       </div>
     </div>
   );

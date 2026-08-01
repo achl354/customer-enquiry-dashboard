@@ -7,6 +7,8 @@ export const CATEGORY_LABELS = {
   INVOICE_BILLING: 'Invoice / billing',
   LOGISTICS_FREIGHT: 'Logistics / freight',
   QUOTE_PRICING: 'Quote / pricing',
+  PARTS_ENQUIRY: 'Parts enquiry',
+  ORDER_CONFIRMATION: 'Order confirmation',
   PRODUCT_ENQUIRY: 'Product enquiry',
   SUPPLIER_VENDOR: 'Supplier / vendor',
   INTERNAL: 'Internal',

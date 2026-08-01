@@ -93,12 +93,25 @@ Proof of Delivery for delivery disputes, or forward to Accounts
 backordered, give a specific estimated window (e.g. "last week of
 September") with an apology, same as PO/ETA handling.
 
-**Spare part enquiries** — replies are structured with exact fields:
+**Spare part enquiries** (category: PARTS_ENQUIRY) — replies are structured
+with exact fields:
 ```
 Code: PABM-FOOT PLATE NUT
 Description: I-MOVE Plastic Nut for Locking Pin on Foot Plate
 Price: $2.00 + GST each
 ```
+Distinct from EQUIPMENT_FAULT (the part is needed for routine wear/
+replacement, not because something broke) and from QUOTE_PRICING (this is a
+single part lookup, not a quote/price-list request).
+
+**Order confirmations** (category: ORDER_CONFIRMATION) — two different
+shapes fall under this: (1) an automated e-commerce order notification
+forwarded internally (e.g. a BigCommerce "New Order (#...)" email, no reply
+needed to the customer, just internal processing), and (2) a brand-new
+customer's first order, where the account is set up as prepaid and the
+reply confirms that plus attaches a tax invoice with bank details before
+dispatch can proceed. Distinct from PO_ETA_REQUEST, which assumes an
+existing account chasing an already-placed order's status.
 
 **Product enquiries / sales leads** — many are *not* answered by the
 sales@ team directly. They're forwarded internally to a named specialist

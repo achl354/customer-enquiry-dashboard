@@ -143,6 +143,35 @@ test('quote/pricing request routes to QUOTE_PRICING', () => {
   assert.equal(r.priority, 'NORMAL');
 });
 
+test('spare-part lookup routes to PARTS_ENQUIRY, distinct from a quote or fault', () => {
+  const r = classify(email({
+    subject: 'RE: Hovertech hose replacement',
+    bodyPreview: 'The part you want is PAHT-AIRHOSE5. The price is $144.88 + GST, I currently only have 4 in stock.',
+    senderEmail: 'biomed@somehospital.org.au',
+  }));
+  assert.equal(r.category, 'PARTS_ENQUIRY');
+  assert.equal(r.priority, 'NORMAL');
+});
+
+test('automated e-commerce order notification routes to ORDER_CONFIRMATION', () => {
+  const r = classify(email({
+    subject: 'FW: New Order (#5746) from Push Sports Braces for $85.00',
+    bodyPreview: 'From: Push Sports Braces <donotreply@bigcommerce.com> Sent: Saturday, 31 January 2026 4:24 PM',
+    senderEmail: 'sales@jdhealthcare.com.au',
+    recipients: ['sales@gatewayrehab.com.au'],
+  }));
+  assert.equal(r.category, 'ORDER_CONFIRMATION');
+});
+
+test('brand-new customer needing prepayment setup routes to ORDER_CONFIRMATION, not PO_ETA_REQUEST', () => {
+  const r = classify(email({
+    subject: 'FW: Helipad Trolley order',
+    bodyPreview: 'Thank you for your order. As this company is both a new customer in our system, and also not likely to be a regular purchaser, the account for this order is prepaid.',
+    senderEmail: 'facilities@somebuilder.com.au',
+  }));
+  assert.equal(r.category, 'ORDER_CONFIRMATION');
+});
+
 test('known supplier domain routes to SUPPLIER_VENDOR at LOW priority', () => {
   const r = classify(email({
     subject: 'Parts availability',

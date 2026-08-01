@@ -9,6 +9,8 @@ const CATEGORIES = [
   'INVOICE_BILLING',
   'LOGISTICS_FREIGHT',
   'QUOTE_PRICING',
+  'PARTS_ENQUIRY',
+  'ORDER_CONFIRMATION',
   'PRODUCT_ENQUIRY',
   'SUPPLIER_VENDOR',
   'INTERNAL',
@@ -101,6 +103,17 @@ const PRICE_DISCREPANCY_SIGNALS = ['price discrepancy', 'amended po', 'kindly up
 const LOGISTICS_SIGNALS = ['consignment', 'proof of delivery', 'redirect', 'pickup confirmation', 'pod attached', 'pickup', 'pick up', 'redelivery', 're delivery', 'missing box', 'short supply', 'shipping dimensions', 'box dimensions'];
 
 const TRIAL_SIGNALS = ['trial request', 'trial of', 'would like to trial', 'request a trial', 'book a trial'];
+
+// Spare-parts lookups/sourcing — checked late (after QUOTE_PRICING) so a
+// parts thread that's really about pricing (e.g. "part codes... price list")
+// still lands in QUOTE_PRICING. Deliberately not a bare 'part' — that
+// substring also matches "important", "department", "apart", etc.
+const PARTS_SIGNALS = ['parts from', 'order - parts', 'the part you want', "part's information", ' part - '];
+
+// Automated/new-order confirmations (e-commerce order notifications, or a
+// brand-new customer whose first order needs prepayment set up) — distinct
+// from PO_ETA_REQUEST, which assumes an existing account chasing dispatch.
+const ORDER_CONFIRMATION_SIGNALS = ['new order (#', 'new customer in our system'];
 
 function domainOf(email) {
   if (!email) return '';
@@ -198,6 +211,10 @@ function classify(email) {
     category = 'PO_ETA_REQUEST';
   } else if (includesAny(text, ['quote', 'pricing', 'special pricing', 'price list', 'quotation'])) {
     category = 'QUOTE_PRICING';
+  } else if (includesAny(text, ORDER_CONFIRMATION_SIGNALS)) {
+    category = 'ORDER_CONFIRMATION';
+  } else if (includesAny(text, PARTS_SIGNALS)) {
+    category = 'PARTS_ENQUIRY';
   } else if (KNOWN_SUPPLIER_DOMAINS.some((d) => senderDomain === d)) {
     category = 'SUPPLIER_VENDOR';
   } else if (!isInternalSender) {
@@ -290,6 +307,10 @@ function suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfR
       return 'Coordinate directly with the courier/freight contact on the thread (consignment redirect, pickup, or proof of delivery) rather than treating this as a product enquiry.';
     case 'QUOTE_PRICING':
       return `Confirm current stock and pricing with the sales rep${quoteNumber ? ` for quote ${quoteNumber}` : ''} before replying — send the quote if in stock, or a specific backorder ETA with an apology if not.`;
+    case 'PARTS_ENQUIRY':
+      return 'Confirm the exact part code, price, and current stock count with the parts/warehouse team before replying with that specific information.';
+    case 'ORDER_CONFIRMATION':
+      return `Confirm the order details${facility ? ` for ${facility}` : ''}${poNumber ? ` (PO ${poNumber})` : ''} and, if this is a new customer, confirm prepayment/account setup before replying with next steps.`;
     case 'PRODUCT_ENQUIRY': {
       const routedRep = repPlaceholderFor(cityTag);
       if (isTrialRequest) {
@@ -344,6 +365,10 @@ function draftReplyFor(category, { poNumber, quoteNumber, facility, isSelfResolv
       return `Hi [courier contact],\n\nCould you please assist with the consignment/pickup detailed below${poNumber ? ` (PO ${poNumber})` : ''}?\n\nThanks,\n[Your name]`;
     case 'QUOTE_PRICING':
       return `Hi there,\n\nThank you for contacting us. I'm confirming current stock and pricing${quoteNumber ? ` for quote ${quoteNumber}` : ''} and will send this through shortly.\n\n${SIGNATURE}`;
+    case 'PARTS_ENQUIRY':
+      return `Hi there,\n\nThank you for contacting us. I'm confirming the part code, price, and current stock and will send this through shortly.\n\n${SIGNATURE}`;
+    case 'ORDER_CONFIRMATION':
+      return `Hi there,\n\nThank you for your order${facility ? ` for ${facility}` : ''}${poNumber ? ` (PO ${poNumber})` : ''}. I'm confirming the account/payment details and will follow up shortly with next steps.\n\n${SIGNATURE}`;
     case 'PRODUCT_ENQUIRY': {
       const routedRep = repPlaceholderFor(cityTag);
       if (isTrialRequest) {

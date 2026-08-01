@@ -167,6 +167,21 @@ staff only pay for one when they're actually acting on it.
   drafts are copied into Outlook manually via the "Copy to clipboard"
   button.
 
+## Email thread history
+
+The detail page has a "Show previous replies" button (only shown when the
+enquiry has a `conversationId`) that fetches every prior message in that
+conversation from Outlook (`GET /api/enquiries/:id/thread`, same
+`fetchConversationMessages` Graph call the draft generator uses
+internally) and displays them chronologically — sender, recipients,
+timestamp, and body. Also on-demand rather than automatic, since most
+enquiries have no reply yet and eagerly fetching on every page view would
+be a wasted Graph call each time (this is a Graph API call, not Claude, so
+it doesn't affect AI spend either way — the on-demand choice here is about
+avoiding unnecessary Graph load/latency, not cost). Requires live Graph
+polling to be configured, since `conversationId` only gets populated for
+messages ingested that way — none of the static seed/demo data has one.
+
 ## Territory rep placeholders
 
 `suggestedAction`/`draftReply` never assert an individual's name for

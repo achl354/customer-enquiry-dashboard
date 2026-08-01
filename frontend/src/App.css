@@ -422,6 +422,32 @@
   color: var(--text-secondary);
 }
 
+.thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.thread-message {
+  background: var(--page-plane);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.thread-message-meta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}
+
+.thread-message-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+}
+
 .field-row {
   display: flex;
   justify-content: space-between;

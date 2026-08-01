@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getEnquiry, updateEnquiry, generateDraft } from '../api';
+import { getEnquiry, updateEnquiry, generateDraft, getThreadHistory } from '../api';
 import { PriorityBadge, StatusBadge, CategoryPill } from '../components/Badges';
 import { STATUS_OPTIONS, statusLabel } from '../taxonomy';
 
@@ -19,6 +19,9 @@ export default function Detail() {
   const [copied, setCopied] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [draftError, setDraftError] = useState(null);
+  const [threadMessages, setThreadMessages] = useState(null);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [threadError, setThreadError] = useState(null);
 
   useEffect(() => {
     getEnquiry(id)
@@ -47,6 +50,19 @@ export default function Detail() {
       setDraftError(e.message);
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function handleShowThread() {
+    setThreadLoading(true);
+    setThreadError(null);
+    try {
+      const { messages } = await getThreadHistory(id);
+      setThreadMessages(messages);
+    } catch (e) {
+      setThreadError(e.message);
+    } finally {
+      setThreadLoading(false);
     }
   }
 
@@ -110,6 +126,39 @@ export default function Detail() {
             <h3>Email content</h3>
             <div className="email-body">{enquiry.bodyPreview || '(no preview available)'}</div>
           </div>
+
+          {enquiry.conversationId && (
+            <div className="panel">
+              <h3>Email thread</h3>
+              {threadMessages === null ? (
+                <div className="draft-actions">
+                  <button type="button" onClick={handleShowThread} disabled={threadLoading}>
+                    {threadLoading ? 'Loading…' : 'Show previous replies'}
+                  </button>
+                  {threadError ? (
+                    <span className="draft-hint" style={{ color: 'var(--status-critical)' }}>{threadError}</span>
+                  ) : (
+                    <span className="draft-hint">Fetched from Outlook on demand — not loaded automatically.</span>
+                  )}
+                </div>
+              ) : threadMessages.length === 0 ? (
+                <p className="draft-hint" style={{ margin: 0 }}>No other messages found in this thread.</p>
+              ) : (
+                <div className="thread-list">
+                  {threadMessages.map((m, i) => (
+                    <div className="thread-message" key={i}>
+                      <div className="thread-message-meta">
+                        <strong>{m.senderName || m.senderEmail}</strong> to {m.recipients.join(', ') || '—'}
+                        {' · '}
+                        {new Date(m.sentAt).toLocaleString()}
+                      </div>
+                      <div className="thread-message-body">{m.bodyPreview || '(empty)'}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="panel">
             <h3>Suggested action</h3>

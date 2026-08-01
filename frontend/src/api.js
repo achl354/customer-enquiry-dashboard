@@ -38,6 +38,10 @@ export function generateDraft(id) {
   return request(`/enquiries/${encodeURIComponent(id)}/draft`, { method: 'POST' });
 }
 
+export function getThreadHistory(id) {
+  return request(`/enquiries/${encodeURIComponent(id)}/thread`);
+}
+
 export function getOverviewStats() {
   return request('/stats/overview');
 }

@@ -90,4 +90,28 @@ router.post('/:id/draft', async (req, res) => {
   }
 });
 
+// Thread history for display on the detail page — on-demand (like drafting)
+// rather than fetched automatically on every page load, since most
+// enquiries have no reply yet and this would otherwise be a wasted Graph
+// call each time someone opens one. This is a Graph API call, not Claude,
+// so it doesn't affect AI spend either way.
+router.get('/:id/thread', async (req, res) => {
+  const existing = repo.getEnquiry(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Enquiry not found' });
+
+  if (!existing.conversationId) {
+    return res.status(400).json({ error: 'No thread history available for this enquiry (no conversation ID stored — likely seed/demo data, not live-ingested mail)' });
+  }
+  if (!graphClient.isConfigured()) {
+    return res.status(400).json({ error: 'Live mail sync is not configured (TENANT_ID/CLIENT_ID/CLIENT_SECRET/MAILBOX missing)' });
+  }
+
+  try {
+    const messages = await graphClient.fetchConversationMessages(existing.conversationId);
+    res.json({ messages });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

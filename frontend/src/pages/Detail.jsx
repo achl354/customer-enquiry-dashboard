@@ -4,11 +4,6 @@ import { getEnquiry, updateEnquiry, generateDraft, getThreadHistory } from '../a
 import { PriorityBadge, StatusBadge, CategoryPill } from '../components/Badges';
 import { STATUS_OPTIONS, statusLabel } from '../taxonomy';
 
-// Matches backend/src/routes/enquiries.js's NO_DRAFT_CATEGORIES — these
-// never get a draft (nothing to send/hand off), so no point showing the
-// panel or letting staff click a button that will just 400.
-const NO_DRAFT_CATEGORIES = ['INTERNAL', 'SPAM_NOTIFICATION', 'UNCLASSIFIED'];
-
 export default function Detail() {
   const { id } = useParams();
   const [enquiry, setEnquiry] = useState(null);
@@ -19,11 +14,23 @@ export default function Detail() {
   const [copied, setCopied] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [draftError, setDraftError] = useState(null);
+  const [draftEmpty, setDraftEmpty] = useState(false);
   const [threadMessages, setThreadMessages] = useState(null);
   const [threadLoading, setThreadLoading] = useState(false);
   const [threadError, setThreadError] = useState(null);
 
   useEffect(() => {
+    // Reset per-enquiry UI state on navigation between enquiries (this
+    // component instance is reused across ids, not remounted) — otherwise
+    // e.g. a "no draft needed" message from the previous enquiry would
+    // briefly carry over onto the next one before its own data loads.
+    setError(null);
+    setDraftError(null);
+    setDraftEmpty(false);
+    setThreadMessages(null);
+    setThreadError(null);
+    setCopied(false);
+
     getEnquiry(id)
       .then((e) => {
         setEnquiry(e);
@@ -42,10 +49,15 @@ export default function Detail() {
   async function handleGenerateDraft() {
     setGenerating(true);
     setDraftError(null);
+    setDraftEmpty(false);
     try {
       const updated = await generateDraft(id);
       setEnquiry(updated);
       setDraftText(updated.draftReply || '');
+      // Claude decided this category genuinely doesn't need one (e.g.
+      // INTERNAL/SPAM) — distinct from "never asked yet", so the button
+      // doesn't just silently reappear with no explanation.
+      if (!updated.draftReply) setDraftEmpty(true);
     } catch (e) {
       setDraftError(e.message);
     } finally {
@@ -174,36 +186,36 @@ export default function Detail() {
             )}
           </div>
 
-          {!NO_DRAFT_CATEGORIES.includes(enquiry.category) && (
-            <div className="panel">
-              <h3>Draft reply / handoff note</h3>
-              {enquiry.draftReply ? (
-                <>
-                  <textarea
-                    className="draft-textarea"
-                    value={draftText}
-                    onChange={(e) => setDraftText(e.target.value)}
-                    rows={10}
-                  />
-                  <div className="draft-actions">
-                    <button type="button" onClick={handleCopyDraft}>{copied ? 'Copied!' : 'Copy to clipboard'}</button>
-                    <span className="draft-hint">Review before sending — edit freely, this is a starting point.</span>
-                  </div>
-                </>
-              ) : (
+          <div className="panel">
+            <h3>Draft reply / handoff note</h3>
+            {enquiry.draftReply ? (
+              <>
+                <textarea
+                  className="draft-textarea"
+                  value={draftText}
+                  onChange={(e) => setDraftText(e.target.value)}
+                  rows={10}
+                />
                 <div className="draft-actions">
-                  <button type="button" onClick={handleGenerateDraft} disabled={generating}>
-                    {generating ? 'Generating…' : 'Generate draft'}
-                  </button>
-                  {draftError ? (
-                    <span className="draft-hint" style={{ color: 'var(--status-critical)' }}>{draftError}</span>
-                  ) : (
-                    <span className="draft-hint">Only generated when you ask for it — no draft has been created yet.</span>
-                  )}
+                  <button type="button" onClick={handleCopyDraft}>{copied ? 'Copied!' : 'Copy to clipboard'}</button>
+                  <span className="draft-hint">Review before sending — edit freely, this is a starting point.</span>
                 </div>
-              )}
-            </div>
-          )}
+              </>
+            ) : (
+              <div className="draft-actions">
+                <button type="button" onClick={handleGenerateDraft} disabled={generating}>
+                  {generating ? 'Generating…' : draftEmpty ? 'Try again' : 'Generate draft'}
+                </button>
+                {draftError ? (
+                  <span className="draft-hint" style={{ color: 'var(--status-critical)' }}>{draftError}</span>
+                ) : draftEmpty ? (
+                  <span className="draft-hint">Claude decided no draft is needed for this category — click again if you disagree.</span>
+                ) : (
+                  <span className="draft-hint">Only generated when you ask for it — no draft has been created yet.</span>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         <div>

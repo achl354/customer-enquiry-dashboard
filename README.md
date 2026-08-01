@@ -157,8 +157,14 @@ staff only pay for one when they're actually acting on it.
   draft continues the conversation naturally instead of repeating or
   contradicting what's already been said. Best-effort — a Graph failure
   here doesn't block drafting, just means less context.
-- The "Generate draft" button/endpoint won't fire for
-  `INTERNAL`/`SPAM_NOTIFICATION`/`UNCLASSIFIED` — nothing to draft there.
+- The "Generate draft" button/endpoint is available for **every** category —
+  the backend doesn't pre-filter any of them out. Categories like
+  `INTERNAL`/`SPAM_NOTIFICATION`/`UNCLASSIFIED` (and automated no-reply
+  senders in any category) usually have nothing to draft, but that's the
+  drafting prompt's own judgment call (`DRAFT_SYSTEM_PROMPT` returns
+  `draftReply: null`), not a system pre-filter — staff can still click the
+  button and see for themselves, and the button relabels to "Try again" with
+  a hint if Claude comes back empty.
 - The rule-based fallback classifier still produces a draft automatically
   (a simple template using extracted fields) whenever it classifies an
   enquiry — that's a free template, not an API call, so there's no cost

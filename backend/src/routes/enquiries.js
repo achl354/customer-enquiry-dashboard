@@ -6,7 +6,6 @@ const graphClient = require('../graph/client');
 const router = express.Router();
 
 const VALID_STATUSES = ['NEW', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER', 'RESOLVED', 'IGNORED'];
-const NO_DRAFT_CATEGORIES = ['INTERNAL', 'SPAM_NOTIFICATION', 'UNCLASSIFIED'];
 
 router.get('/', (req, res) => {
   const { category, priority, status, search, sort, order, limit, offset } = req.query;
@@ -47,15 +46,18 @@ router.patch('/:id', (req, res) => {
 // one that gets classified. Free-template drafts from the rule-based
 // classifier already come populated (no cost), so this only ever fires for
 // AI-classified enquiries missing one.
+//
+// Available for every category, including ones the classifier expects
+// won't need a draft (INTERNAL/SPAM_NOTIFICATION/UNCLASSIFIED) — rather
+// than the backend pre-filtering those out, staff can just click the
+// button and see for themselves; the drafting prompt itself already
+// returns null for genuinely draft-less cases (see DRAFT_SYSTEM_PROMPT).
 router.post('/:id/draft', async (req, res) => {
   const existing = repo.getEnquiry(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Enquiry not found' });
 
   if (existing.draftReply) return res.json(existing);
 
-  if (NO_DRAFT_CATEGORIES.includes(existing.category)) {
-    return res.status(400).json({ error: `No draft needed for category ${existing.category}` });
-  }
   if (!aiClassifier.isConfigured()) {
     return res.status(400).json({ error: 'AI classifier is not configured (ANTHROPIC_API_KEY missing)' });
   }

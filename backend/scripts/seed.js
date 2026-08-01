@@ -6,7 +6,24 @@ const db = require('../src/db');
 
 const emails = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'seed-data', 'sample-emails.json'), 'utf8'));
 
-async function main() {
+/**
+ * @param {object} opts
+ * @param {boolean} opts.force - Wipe and reseed even if data already exists.
+ *   Defaults to false so a background/boot-time call is a safe no-op on an
+ *   already-seeded database — without this, every server restart (every
+ *   redeploy, or the free tier waking from its idle spin-down) would
+ *   silently wipe the table and re-run all 114 emails through the AI
+ *   classifier again, re-spending real API cost for zero new data. `npm run
+ *   seed` (direct CLI use) always forces, since that's someone deliberately
+ *   asking to reset the demo data.
+ */
+async function main({ force = false } = {}) {
+  const existingCount = db.prepare('SELECT COUNT(*) as c FROM enquiries').get().c;
+  if (existingCount > 0 && !force) {
+    console.log(`Skipping seed — ${existingCount} enquiries already present. Run "npm run seed" directly (which always reseeds) if you want to reset the demo data.`);
+    return;
+  }
+
   db.exec('DELETE FROM enquiries');
 
   let ingested = 0;
@@ -45,7 +62,7 @@ async function main() {
 // when required as a module (e.g. server.js firing this in the background
 // after boot) — the caller decides when to actually run it.
 if (require.main === module) {
-  main().catch((err) => {
+  main({ force: true }).catch((err) => {
     console.error(err);
     process.exit(1);
   });

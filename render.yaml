@@ -24,13 +24,14 @@ services:
         value: production
       - key: POLL_CRON_EXPRESSION
         value: "* * * * *"
-      # TEMPORARY (again): re-enabled to repopulate the live URL for another
-      # look after the on-demand-drafting, thread-history, and territory-
-      # placeholder changes. Remove this once seen — free tier has no
-      # persistent disk, so leaving it on re-spends ~114 classification
-      # calls on every restart for the same demo data.
+      # Off by default. seed.js is now idempotent (skips reseeding if data
+      # already exists, see scripts/seed.js), so leaving this on is much
+      # safer than it used to be — but there's still no reason to pay for
+      # even one classification pass on every redeploy when nothing's
+      # changed in the demo data. Set to "true" only for a one-off repopulate
+      # after a real data/seed change, then set back to "false".
       - key: SEED_ON_BOOT
-        value: "true"
+        value: "false"
       # Secrets — left blank on purpose (sync: false means Render prompts you
       # to fill these in via its dashboard rather than storing them in git).
       - key: ANTHROPIC_API_KEY

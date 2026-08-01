@@ -180,7 +180,7 @@ function classify(email) {
     // otherwise get swallowed by the QUOTE_PRICING check below).
     category = 'PRODUCT_ENQUIRY';
   } else if (
-    includesAny(text, ['not inflating', 'not turning', 'malfunction', 'not working', 'stopped working', 'fault', 'broken', 'digs into', 'does not fit', "doesn't fit"])
+    includesAny(text, ['not inflating', 'not turning', 'malfunction', 'not working', 'stopped working', 'fault', 'faulty', 'broken', 'digs into', 'does not fit', "doesn't fit", 'failure', 'leaking', 'problem with'])
   ) {
     category = 'EQUIPMENT_FAULT';
   } else if (includesAny(text, ['backorder'])) {

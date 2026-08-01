@@ -103,6 +103,19 @@ test('goods return routes to RETURNS_CREDIT', () => {
     senderEmail: 'clinic@healthsharevic.org.au',
   }));
   assert.equal(r.category, 'RETURNS_CREDIT');
+  assert.match(r.suggestedAction, /credit note/);
+});
+
+test('a pre-dispatch cancellation routes to RETURNS_CREDIT but with cancellation-specific wording, not a credit-note instruction', () => {
+  const r = classify(email({
+    subject: 'RE: Cancellation Request - PO 2753485',
+    bodyPreview: 'Thank you for contacting us. The order has been now cancelled.',
+    senderEmail: 'buyer@somehospital.org.au',
+  }));
+  assert.equal(r.category, 'RETURNS_CREDIT');
+  assert.match(r.suggestedAction, /no credit note is needed/);
+  assert.match(r.draftReply, /cancelled/);
+  assert.doesNotMatch(r.draftReply, /credit note/);
 });
 
 test('overbilled invoice routes to INVOICE_BILLING, even when a quote number is also present', () => {

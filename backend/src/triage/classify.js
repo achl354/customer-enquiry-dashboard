@@ -93,7 +93,13 @@ const SELF_RESOLVED_SIGNALS = [
 // or it gets misread as a routine spare-parts request.
 const COMPLAINT_SIGNALS = ['customer complaint', 'discontinue use', 'lot number', 'adverse event'];
 
-const RETURNS_SIGNALS = ['goods return', 'credit note', 'return label', 'item order in error', 'returned items', 'cancellation', 'unable to process', 'restocking fee'];
+// A pre-dispatch cancellation is folded into RETURNS_CREDIT (closest
+// existing bucket) but needs distinct suggestedAction/draftReply wording —
+// nothing was ever shipped or returned, so "confirm the returned item was
+// received, process the credit note" doesn't apply. See isCancellation below.
+const CANCELLATION_SIGNALS = ['cancellation', 'unable to process'];
+
+const RETURNS_SIGNALS = ['goods return', 'credit note', 'return label', 'item order in error', 'returned items', 'restocking fee', ...CANCELLATION_SIGNALS];
 
 // A flat "we don't stock this" decline reads as a routine product enquiry,
 // but a stale "Purchase Order"/"PO" reference elsewhere in the subject (left
@@ -253,6 +259,7 @@ function classify(email) {
   // --- Priority ---
   const isSelfResolvedFeedback = category === 'EQUIPMENT_FAULT' && includesAny(text, SELF_RESOLVED_SIGNALS);
   const isPriceDiscrepancy = category === 'PO_ETA_REQUEST' && includesAny(text, PRICE_DISCREPANCY_SIGNALS);
+  const isCancellation = category === 'RETURNS_CREDIT' && includesAny(text, CANCELLATION_SIGNALS);
 
   let priority = 'NORMAL';
   const urgentSignals =
@@ -288,6 +295,7 @@ function classify(email) {
     facility,
     isSelfResolvedFeedback,
     isPriceDiscrepancy,
+    isCancellation,
     cityTag,
     isTrialRequest,
     isPartLookup,
@@ -314,7 +322,7 @@ function classify(email) {
 // sales@jdhealthcare.com.au (see backend/docs/response-patterns.md), not
 // generic guesses — e.g. PO/ETA and equipment-fault replies both route
 // through an internal check before anything goes back to the customer.
-function suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfResolvedFeedback, isPriceDiscrepancy, cityTag, isTrialRequest, isPartLookup }) {
+function suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfResolvedFeedback, isPriceDiscrepancy, isCancellation, cityTag, isTrialRequest, isPartLookup }) {
   switch (category) {
     case 'PRODUCT_COMPLAINT':
       return 'Formal/adverse-event complaint — route to Graham Lade and Scott Borresen, ask the customer to discontinue use, and capture the product code, LOT number, and expiry before responding further.';
@@ -331,6 +339,9 @@ function suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfR
       }
       return `Confirm ${poNumber ? `PO ${poNumber}'s` : "the referenced PO's"} dispatch/container status with Purchasing before replying. If delivered, attach Proof of Delivery; if not, give a specific revised delivery window with an apology for any delay.`;
     case 'RETURNS_CREDIT':
+      if (isCancellation) {
+        return `Cancel the order${poNumber ? ` (PO ${poNumber})` : ''} and process any refund if payment was already taken — nothing was shipped or returned here, so no credit note is needed, just confirm the cancellation to the customer.`;
+      }
       return 'Confirm the returned item(s) have been received, process/attach the credit note, and reply factually — no apology needed unless the return was our error.';
     case 'INVOICE_BILLING':
       return 'Check tracking/dispatch records for Proof of Delivery, or loop in Accounts (accounts@jdhealthcare.com.au) for billing corrections; reply with the specific resolution (POD attached, credit note, etc.).';
@@ -370,7 +381,7 @@ const SIGNATURE = 'Kind regards,\n[Your name]\nOperations Coordinator\nJD Health
 // available here, so these are generic placeholders staff fill in, not
 // personalized like the AI drafts. Still gives every enquiry *something*
 // rather than nothing when running in rules-only mode.
-function draftReplyFor(category, { poNumber, quoteNumber, facility, isSelfResolvedFeedback, isPriceDiscrepancy, cityTag, isTrialRequest, isPartLookup }) {
+function draftReplyFor(category, { poNumber, quoteNumber, facility, isSelfResolvedFeedback, isPriceDiscrepancy, isCancellation, cityTag, isTrialRequest, isPartLookup }) {
   switch (category) {
     case 'PRODUCT_COMPLAINT':
       // Real Sent Items show this goes to the customer immediately (discontinue
@@ -390,6 +401,9 @@ function draftReplyFor(category, { poNumber, quoteNumber, facility, isSelfResolv
       }
       return `Hi there,\n\nThank you for contacting us. I'm just confirming the dispatch/container status${poNumber ? ` for PO ${poNumber}` : ''} with our warehouse team and will follow up shortly with a firm delivery date.\n\n${SIGNATURE}`;
     case 'RETURNS_CREDIT':
+      if (isCancellation) {
+        return `Hi there,\n\nThank you for contacting us. I can confirm this order${poNumber ? ` (PO ${poNumber})` : ''} has been cancelled, and any refund due will be processed.\n\n${SIGNATURE}`;
+      }
       return `Hi there,\n\nThank you for contacting us. I can confirm we've received the returned item(s) and the credit note is being processed.\n\n${SIGNATURE}`;
     case 'INVOICE_BILLING':
       return `Hi there,\n\nThank you for contacting us. I'm checking our dispatch records for Proof of Delivery/billing details and will follow up shortly, looping in Accounts if needed.\n\n${SIGNATURE}`;

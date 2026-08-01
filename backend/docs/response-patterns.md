@@ -247,12 +247,22 @@ real-mail sample (2026-08):**
   asks us for a part (customer-facing, answer directly) and when we're
   sourcing a part from an external manufacturer/supplier (e.g. "Parts from
   BMB" to a manufacturer contact) — the latter needs an internal-purchasing
-  reply shape, not a customer-facing one, and currently gets the wrong one.
+  reply shape, not a customer-facing one.
 - Order-cancellation requests are folded into RETURNS_CREDIT for lack of a
-  better home (see the category note above) — the bucket is defensible,
-  but its suggestedAction/draftReply text ("confirm the returned item was
-  received, process the credit note") doesn't literally apply to a
-  pre-dispatch cancellation where nothing was ever shipped or returned.
+  better home (see the category note above) — nothing was ever shipped or
+  returned, so the generic "confirm the returned item was received,
+  process the credit note" wording doesn't apply.
+
+**All four of the above are fixed** (2026-08): `'not charging'` added to
+EQUIPMENT_FAULT; a `DECLINE_SIGNALS` check ("not a product that we...")
+now wins over a stale PO reference; `KNOWN_SUPPLIER_RECIPIENT_DOMAINS`
+(movetec.com.au, rihaindustries.com) routes supplier-sourcing
+correspondence to SUPPLIER_VENDOR ahead of the parts-lookup check; and an
+`isCancellation` flag swaps in cancellation-specific suggestedAction/
+draftReply text within RETURNS_CREDIT, the same pattern used for
+`isPriceDiscrepancy`/`isTrialRequest`/`isPartLookup` elsewhere in
+`classify.js`. Left here as a record of what a keyword-only classifier
+gets wrong by default, not as an open gap.
 
 **Per-staff closing-line variation** worth reflecting in a personalized
 drafter rather than one generic sign-off: Scott Borresen's near-universal

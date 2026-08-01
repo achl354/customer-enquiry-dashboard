@@ -33,6 +33,12 @@ test('statusForCategories: Resolved takes precedence if both are somehow applied
   assert.equal(statusForCategories(['No Action Needed', 'Resolved']), 'RESOLVED');
 });
 
+test('statusForCategories: matching is case-insensitive and trims whitespace', () => {
+  assert.equal(statusForCategories(['RESOLVED']), 'RESOLVED');
+  assert.equal(statusForCategories(['  Resolved  ']), 'RESOLVED');
+  assert.equal(statusForCategories(['no action needed']), 'IGNORED');
+});
+
 test('statusForCategories: unrelated or empty categories are not a signal', () => {
   assert.equal(statusForCategories(['Blue Category']), null);
   assert.equal(statusForCategories([]), null);

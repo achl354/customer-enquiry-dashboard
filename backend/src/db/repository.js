@@ -22,13 +22,19 @@ function statusForFlag(flagStatus) {
 // with this" signal that doesn't depend on a habit the team doesn't have.
 // Staff apply one via Outlook's own Categorize menu — same low-friction
 // motion as flagging, just a channel nothing else is already using.
-const RESOLVED_CATEGORY = 'Resolved';
-const IGNORED_CATEGORY = 'No Action Needed';
+const RESOLVED_CATEGORY = 'resolved';
+const IGNORED_CATEGORY = 'no action needed';
 
+// Case-insensitive on purpose — these categories don't exist in Outlook yet
+// (the mailbox currently only has the default color names, e.g. "Red
+// Category"), so whoever creates them is typing the name freehand. No
+// reason to make that exact-case or risk a silent miss over "resolved" vs
+// "Resolved".
 function statusForCategories(categories) {
   if (!categories || categories.length === 0) return null;
-  if (categories.includes(RESOLVED_CATEGORY)) return 'RESOLVED';
-  if (categories.includes(IGNORED_CATEGORY)) return 'IGNORED';
+  const normalized = categories.map((c) => (c || '').trim().toLowerCase());
+  if (normalized.includes(RESOLVED_CATEGORY)) return 'RESOLVED';
+  if (normalized.includes(IGNORED_CATEGORY)) return 'IGNORED';
   return null;
 }
 

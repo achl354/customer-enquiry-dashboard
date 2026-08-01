@@ -12,23 +12,27 @@ function isGraphConfigured() {
 
 /**
  * Re-check open enquiries against their current Outlook follow-up flag and
- * sync it into the dashboard status. 'complete' always wins (the strongest
- * signal a human is done with this thread) and moves straight to RESOLVED
- * regardless of current status. 'flagged' only advances a still-untouched
- * NEW enquiry to IN_PROGRESS — it never downgrades a more specific status
- * staff already set themselves (e.g. WAITING_ON_CUSTOMER).
+ * category tags, and sync into the dashboard status. Category wins first —
+ * a "Resolved" or "No Action Needed" category is an explicit, unambiguous
+ * "I'm done with this" the same way flag='complete' is, so it moves
+ * straight to RESOLVED/IGNORED regardless of current status. Falls back to
+ * the flag if no category is set: 'complete' also moves straight to
+ * RESOLVED; 'flagged' only advances a still-untouched NEW enquiry to
+ * IN_PROGRESS — none of these ever downgrade a more specific status staff
+ * already have (e.g. WAITING_ON_CUSTOMER).
  */
 async function syncFlagStatuses() {
   const open = repo.listOpenEnquiriesForFlagSync();
   if (open.length === 0) return { checked: 0, updated: 0 };
 
-  const flags = await graphClient.fetchMessageFlags(open.map((e) => e.graphMessageId));
+  const results = await graphClient.fetchMessageFlags(open.map((e) => e.graphMessageId));
 
   let updated = 0;
   for (const enquiry of open) {
-    const nextStatus = repo.statusForFlag(flags.get(enquiry.graphMessageId));
-    if (nextStatus === 'RESOLVED' && enquiry.status !== 'RESOLVED') {
-      repo.updateEnquiry(enquiry.id, { status: 'RESOLVED' });
+    const info = results.get(enquiry.graphMessageId);
+    const nextStatus = repo.statusForCategories(info?.categories) || repo.statusForFlag(info?.flagStatus);
+    if (nextStatus === 'RESOLVED' || nextStatus === 'IGNORED') {
+      repo.updateEnquiry(enquiry.id, { status: nextStatus });
       updated += 1;
     } else if (nextStatus === 'IN_PROGRESS' && enquiry.status === 'NEW') {
       repo.updateEnquiry(enquiry.id, { status: 'IN_PROGRESS' });

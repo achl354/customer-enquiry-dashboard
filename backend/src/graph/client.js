@@ -34,7 +34,7 @@ async function fetchMessagesSince(sinceIso) {
   const token = await getAccessToken();
   const mailbox = encodeURIComponent(process.env.MAILBOX);
   const filter = sinceIso ? `&$filter=receivedDateTime ge ${sinceIso}` : '';
-  const select = '$select=id,internetMessageId,subject,bodyPreview,receivedDateTime,from,toRecipients,hasAttachments,importance,webLink,flag,conversationId';
+  const select = '$select=id,internetMessageId,subject,bodyPreview,receivedDateTime,from,toRecipients,hasAttachments,importance,webLink,flag,conversationId,categories';
   const url = `${GRAPH_BASE}/users/${mailbox}/mailFolders/inbox/messages?${select}${filter}&$orderby=receivedDateTime desc&$top=50`;
 
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -60,6 +60,7 @@ function toRawEmail(msg) {
     importance: msg.importance || 'normal',
     webLink: msg.webLink || null,
     flagStatus: msg.flag?.flagStatus || null,
+    categories: msg.categories || [],
     conversationId: msg.conversationId || null,
   };
 }
@@ -71,13 +72,17 @@ function chunk(arr, size) {
 }
 
 /**
- * Fetch the current Outlook follow-up flag status for a set of messages (by
- * Graph message id), via the $batch endpoint — staff already use Outlook's
- * flag feature to mark threads complete, so this lets the dashboard reflect
- * that instead of asking for a second, separate "mark as done" action.
- * Returns a Map of messageId -> flagStatus ('notFlagged' | 'flagged' |
- * 'complete'), silently skipping any message that no longer resolves (e.g.
- * moved/deleted) rather than failing the whole batch.
+ * Fetch the current Outlook follow-up flag AND category tags for a set of
+ * messages (by Graph message id), via the $batch endpoint. The follow-up
+ * flag was the original plan for detecting "done", but checking real Sent
+ * Items showed it's barely used in practice — genuinely-handled threads
+ * routinely have no flag, or one left at 'flagged' rather than 'complete'.
+ * Categories are a separate, currently-unused Outlook feature in this
+ * mailbox, so they're a cleaner channel for an explicit "Resolved"/"No
+ * Action Needed" tag without depending on a habit the team doesn't have.
+ * Returns a Map of messageId -> { flagStatus, categories }, silently
+ * skipping any message that no longer resolves (e.g. moved/deleted) rather
+ * than failing the whole batch.
  */
 async function fetchMessageFlags(messageIds) {
   if (messageIds.length === 0) return new Map();
@@ -90,7 +95,7 @@ async function fetchMessageFlags(messageIds) {
       requests: batch.map((id, i) => ({
         id: String(i),
         method: 'GET',
-        url: `/users/${mailbox}/messages/${encodeURIComponent(id)}?$select=flag`,
+        url: `/users/${mailbox}/messages/${encodeURIComponent(id)}?$select=flag,categories`,
       })),
     };
     const res = await fetch(GRAPH_BATCH_URL, {
@@ -105,8 +110,11 @@ async function fetchMessageFlags(messageIds) {
     const data = await res.json();
     for (const r of data.responses || []) {
       const originalId = batch[Number(r.id)];
-      if (r.status === 200 && r.body?.flag?.flagStatus) {
-        results.set(originalId, r.body.flag.flagStatus);
+      if (r.status === 200) {
+        results.set(originalId, {
+          flagStatus: r.body?.flag?.flagStatus || null,
+          categories: r.body?.categories || [],
+        });
       }
       // Non-200 (e.g. 404 for a moved/deleted message) is skipped silently.
     }

@@ -14,6 +14,24 @@ function statusForFlag(flagStatus) {
   return null;
 }
 
+// Checking real Sent Items showed the follow-up flag above is barely used in
+// practice — genuinely-handled threads routinely have no flag, or one left
+// at 'flagged' rather than 'complete'. These two Outlook categories are a
+// currently-unused feature in the mailbox (every message checked came back
+// with an empty category list), so they're a cleaner, explicit "I'm done
+// with this" signal that doesn't depend on a habit the team doesn't have.
+// Staff apply one via Outlook's own Categorize menu — same low-friction
+// motion as flagging, just a channel nothing else is already using.
+const RESOLVED_CATEGORY = 'Resolved';
+const IGNORED_CATEGORY = 'No Action Needed';
+
+function statusForCategories(categories) {
+  if (!categories || categories.length === 0) return null;
+  if (categories.includes(RESOLVED_CATEGORY)) return 'RESOLVED';
+  if (categories.includes(IGNORED_CATEGORY)) return 'IGNORED';
+  return null;
+}
+
 // Status "rank" so reply-detection (and anything similar) can only ever
 // advance an enquiry forward, never undo a status staff already set
 // themselves — e.g. a stale/old reply shouldn't demote a RESOLVED enquiry
@@ -83,7 +101,7 @@ async function ingestEmail(raw) {
     draftReply: result.draftReply || null,
     confidence: result.confidence == null ? null : result.confidence,
     classifiedBy: result.classifiedBy || 'rules',
-    status: statusForFlag(raw.flagStatus) || 'NEW',
+    status: statusForCategories(raw.categories) || statusForFlag(raw.flagStatus) || 'NEW',
     assignedTo: null,
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -386,5 +404,6 @@ module.exports = {
   listOpenEnquiriesForFlagSync,
   listOpenEnquiriesForReplySync,
   statusForFlag,
+  statusForCategories,
   statusForReply,
 };

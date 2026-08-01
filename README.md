@@ -243,29 +243,43 @@ registration:
 Without these env vars set, the app runs fine in seed-only/demo mode — the
 poller silently no-ops.
 
-## Status sync (Outlook follow-up flags)
+## Status sync (Outlook categories & follow-up flags)
 
 The dashboard is an add-on triage layer, not the system of record — staff
-take the actual action (reply, flag a thread done) in Outlook, same as
+take the actual action (reply, mark a thread done) in Outlook, same as
 before this existed, and `status` flows one-way from there into the
 dashboard. It cannot be set manually in the dashboard (`PATCH` rejects a
 `status` field with 400) precisely so it can't drift from what Outlook
-actually shows. Every poll cycle re-checks each open enquiry's flag via
-Graph's `$batch` endpoint and syncs it into `status`:
+actually shows. Every poll cycle re-checks each open enquiry's category
+tags and follow-up flag via Graph's `$batch` endpoint and syncs the result
+into `status` (`statusForCategories`/`statusForFlag` in `db/repository.js`):
 
-- Flag set to **Complete** → dashboard status becomes `RESOLVED`, regardless
-  of its current status. This is treated as the strongest signal, since a
-  human explicitly marked the thread finished in Outlook.
+- Category **"Resolved"** → dashboard status becomes `RESOLVED`, regardless
+  of current status. Category **"No Action Needed"** → `IGNORED`, same way.
+  These are checked first and take precedence over the flag below.
+- Flag set to **Complete** → `RESOLVED` (same as the category, checked as a
+  fallback when no category is set).
 - Flag set to **Flagged** (follow-up, not yet complete) → only advances a
-  still-untouched `NEW` enquiry to `IN_PROGRESS`. It never downgrades a more
+  still-untouched `NEW` enquiry to `IN_PROGRESS`. Never downgrades a more
   advanced status the reply-detection sync (below) already set (e.g.
   `WAITING_ON_CUSTOMER`).
-- No flag → no change either way; it's not evidence the enquiry is still new.
+- Neither present → no change either way; not evidence the enquiry is still new.
+
+**Why categories, not just the flag:** checking real Sent Items showed the
+follow-up flag is barely used in practice — genuinely-handled threads
+routinely had no flag at all, or one left at `flagged` rather than
+`complete`. Categories are a separate, currently-unused Outlook feature in
+this mailbox, so they're a clean, unambiguous channel that doesn't depend
+on a habit the team doesn't already have. Staff apply one via Outlook's own
+Categorize menu — same low-friction motion as flagging, just a tag nothing
+else is already using. This is a process change as much as a code one: it
+only works if staff actually tag things "Resolved"/"No Action Needed" when
+they're done.
 
 This runs as part of every `runPollOnce()` (scheduled poll or manual
 `POST /api/ingest/run`), which now also returns `flagsChecked`/`flagsUpdated`
-counts. There's no reverse direction — the dashboard never writes a flag (or
-anything else) back to Outlook.
+counts. There's no reverse direction — the dashboard never writes a flag,
+category, or anything else back to Outlook.
 
 ## Status sync (reply/forward detection)
 

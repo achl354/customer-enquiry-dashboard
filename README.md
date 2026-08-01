@@ -77,6 +77,7 @@ cd backend
 npm install
 npm run seed   # loads backend/seed-data/sample-emails.json into SQLite
 npm start       # http://localhost:4000
+npm test        # regression tests for the rule-based classifier (node:test, no extra deps)
 ```
 
 Copy `backend/.env.example` to `backend/.env` and set `ANTHROPIC_API_KEY` to
@@ -99,10 +100,11 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 
 | Endpoint | Description |
 |---|---|
-| `GET /api/enquiries?category=&priority=&status=&search=&sort=&order=` | List/filter enquiries |
+| `GET /api/enquiries?category=&priority=&status=&search=&sort=&order=` | List/filter enquiries. `search` matches subject, body, sender email, PO#, facility, and assignee |
 | `GET /api/enquiries/:id` | Single enquiry, full detail |
 | `PATCH /api/enquiries/:id` | Update `assignedTo` (dashboard-only; `status` is read-only — rejected with 400 if sent, since it's derived from Outlook, see "Status sync" below) |
-| `GET /api/stats/overview` | Counts by category/status/priority, oldest open, avg resolution time |
+| `GET /api/enquiries/export` | CSV export — same filters as the list endpoint, no pagination. Lean reporting column set (no draft/body content) |
+| `GET /api/stats/overview` | Counts by category/status/priority/facility, aging buckets, open workload by assignee, 30-day daily volume, avg resolution time (gated behind a minimum sample size) |
 | `GET /api/ingest/status` | Whether live Graph polling and AI classification are configured |
 | `POST /api/ingest/run` | Manually trigger one poll cycle |
 
@@ -290,6 +292,17 @@ Runs as part of every `runPollOnce()` alongside the flag sync, adding
 `conversationId` (seed data, or anything ingested before this feature
 existed) are skipped — nothing to check them against.
 
+## Access control (Basic Auth)
+
+The dashboard shows real customer/health-department correspondence with no
+other access control by default, so once it's carrying real data rather
+than seed data, set `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD` (see
+`backend/.env.example` or the `render.yaml` env vars for Render). When both
+are set, every route except `GET /api/health` (which Render's own health
+check polls with no credentials) requires HTTP Basic Auth. Leaving either
+one blank disables auth entirely — the default, so local dev needs no setup.
+See `backend/src/auth/basicAuth.js`.
+
 ## Deploying to Render
 
 `render.yaml` at the repo root is a Render Blueprint — it defines everything
@@ -307,6 +320,9 @@ needed except secrets, so Render can provision the whole thing from the repo:
      app registration credentials (see "Live ingestion setup" above). Can be
      left blank for now — the app runs fine in demo mode without them, same
      as locally, and you can add them later once the app registration exists.
+   - `DASHBOARD_USERNAME` / `DASHBOARD_PASSWORD` — see "Access control" above.
+     Also fine to leave blank for an initial demo check, but set both before
+     this is showing anything beyond seed data on a public URL.
 4. **Deploy.** The build step builds the frontend and installs backend
    dependencies; the app then serves both the API and the built frontend
    from one Express process on one URL — no separate frontend host, no CORS
@@ -331,15 +347,20 @@ scale, but worth knowing if traffic ever grows enough to need horizontal
 scaling, at which point SQLite would need to move to a real database
 server first.
 
-There is currently **no authentication** on the dashboard — see the Roadmap
-below. Don't point a Render deployment's public URL at anyone before that's
-in place.
+Authentication is opt-in, not on by default — see "Access control" above.
+Don't point a Render deployment's public URL at anyone before
+`DASHBOARD_USERNAME`/`DASHBOARD_PASSWORD` are set.
 
 ## Roadmap
 
 - **Attachment/PDF parsing** for PO documents (many POs arrive as PDF
   attachments with the real order details, not just in the email body).
-- **Thread/context awareness.** Classify based on the full email thread
-  history, not just the latest message — useful for catching "already
-  replied to this" duplicates and for knowing what's already been promised.
-- **Auth** for the dashboard itself before any real deployment.
+- **Classification-accuracy feedback loop.** Nothing currently tracks when
+  a human overrides an AI-assigned category/priority, so there's no signal
+  for whether real-world accuracy is drifting or which categories the model
+  struggles with most.
+- **SLA targets.** The aging-bucket breakdown on Overview shows how many
+  open enquiries are piling up, but there's no configurable "urgent should
+  get a first action within N hours" target or breach alerting yet.
+- **Move off Render's free tier** (persistent disk + continuous polling)
+  once this is more than a demo — see "Deploying to Render" above.

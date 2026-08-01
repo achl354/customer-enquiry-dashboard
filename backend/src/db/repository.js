@@ -136,7 +136,9 @@ const SORT_COLUMNS = {
   status: 'status',
 };
 
-function listEnquiries({ category, priority, status, search, sort = 'receivedAt', order = 'desc', limit = 100, offset = 0 } = {}) {
+// Shared by listEnquiries and the CSV export — both filter the same way,
+// the export just skips LIMIT/OFFSET to return every matching row.
+function buildWhereClause({ category, priority, status, search }) {
   const clauses = [];
   const params = {};
 
@@ -153,11 +155,17 @@ function listEnquiries({ category, priority, status, search, sort = 'receivedAt'
     params.status = status;
   }
   if (search) {
-    clauses.push('(subject LIKE @search OR body_preview LIKE @search OR sender_email LIKE @search OR po_number LIKE @search)');
+    clauses.push(
+      '(subject LIKE @search OR body_preview LIKE @search OR sender_email LIKE @search OR po_number LIKE @search OR facility LIKE @search OR assigned_to LIKE @search)'
+    );
     params.search = `%${search}%`;
   }
 
-  const where = clauses.length ? `WHERE ${clauses.join(' AND ')}` : '';
+  return { where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params };
+}
+
+function listEnquiries({ category, priority, status, search, sort = 'receivedAt', order = 'desc', limit = 100, offset = 0 } = {}) {
+  const { where, params } = buildWhereClause({ category, priority, status, search });
   const sortCol = SORT_COLUMNS[sort] || 'received_at';
   const dir = order === 'asc' ? 'ASC' : 'DESC';
 
@@ -168,6 +176,17 @@ function listEnquiries({ category, priority, status, search, sort = 'receivedAt'
   const total = db.prepare(`SELECT COUNT(*) as c FROM enquiries ${where}`).get(params).c;
 
   return { items: rows.map(rowToEnquiry), total };
+}
+
+// Same filters as listEnquiries, no pagination — used by CSV export, which
+// needs every matching row rather than one page of results.
+function listEnquiriesForExport({ category, priority, status, search, sort = 'receivedAt', order = 'desc' } = {}) {
+  const { where, params } = buildWhereClause({ category, priority, status, search });
+  const sortCol = SORT_COLUMNS[sort] || 'received_at';
+  const dir = order === 'asc' ? 'ASC' : 'DESC';
+
+  const rows = db.prepare(`SELECT * FROM enquiries ${where} ORDER BY ${sortCol} ${dir}`).all(params);
+  return rows.map(rowToEnquiry);
 }
 
 function getEnquiry(id) {
@@ -274,6 +293,67 @@ function overviewStats() {
     ? resolvedWithDuration.reduce((sum, r) => sum + r.hours, 0) / resolvedWithDuration.length
     : null;
 
+  // Top facilities/organisations by volume — nothing in the UI previously
+  // surfaced which customers actually generate the most enquiries.
+  const byFacility = db
+    .prepare(
+      "SELECT facility, COUNT(*) as count FROM enquiries WHERE facility IS NOT NULL AND facility != '' GROUP BY facility ORDER BY count DESC LIMIT 10"
+    )
+    .all();
+
+  // Aging distribution of open enquiries. A single "oldest open" item
+  // doesn't show how many are piling up — this does, in the same buckets
+  // a team lead would think in (still fresh / due for a check-in / overdue).
+  const agingRows = db
+    .prepare(
+      `SELECT
+         CASE
+           WHEN (julianday('now') - julianday(received_at)) * 24 < 24 THEN '0-24h'
+           WHEN (julianday('now') - julianday(received_at)) < 3 THEN '1-3d'
+           WHEN (julianday('now') - julianday(received_at)) < 7 THEN '3-7d'
+           ELSE '7d+'
+         END as bucket,
+         COUNT(*) as count
+       FROM enquiries
+       WHERE status NOT IN ('RESOLVED', 'IGNORED')
+       GROUP BY bucket`
+    )
+    .all();
+  const agingByBucket = Object.fromEntries(agingRows.map((r) => [r.bucket, r.count]));
+  const agingBuckets = ['0-24h', '1-3d', '3-7d', '7d+'].map((bucket) => ({
+    bucket,
+    count: agingByBucket[bucket] || 0,
+  }));
+
+  // Open workload per assignee — "Team overview" previously showed nothing
+  // about the team itself. Unassigned is reported separately since it's not
+  // a person.
+  const byAssignee = db
+    .prepare(
+      "SELECT assigned_to, COUNT(*) as count FROM enquiries WHERE status NOT IN ('RESOLVED', 'IGNORED') AND assigned_to IS NOT NULL AND assigned_to != '' GROUP BY assigned_to ORDER BY count DESC"
+    )
+    .all();
+  const unassignedOpen = db
+    .prepare(
+      "SELECT COUNT(*) as c FROM enquiries WHERE status NOT IN ('RESOLVED', 'IGNORED') AND (assigned_to IS NULL OR assigned_to = '')"
+    )
+    .get().c;
+
+  // Daily volume for the last 30 days, zero-filled — a single week-over-week
+  // delta hides spikes/seasonality (e.g. a burst of PO notices on one day).
+  const dailyRows = db
+    .prepare(
+      "SELECT date(received_at) as day, COUNT(*) as count FROM enquiries WHERE received_at >= datetime('now', '-30 days') GROUP BY day"
+    )
+    .all();
+  const dailyByDate = Object.fromEntries(dailyRows.map((r) => [r.day, r.count]));
+  const dailyVolume = [];
+  for (let i = 29; i >= 0; i -= 1) {
+    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+    const key = d.toISOString().slice(0, 10);
+    dailyVolume.push({ date: key, count: dailyByDate[key] || 0 });
+  }
+
   return {
     total,
     openCount,
@@ -281,8 +361,14 @@ function overviewStats() {
     byCategory: Object.fromEntries(byCategory.map((r) => [r.category, r.count])),
     byStatus: Object.fromEntries(byStatus.map((r) => [r.status, r.count])),
     byPriority: Object.fromEntries(byPriority.map((r) => [r.priority, r.count])),
+    byFacility: byFacility.map((r) => ({ facility: r.facility, count: r.count })),
+    agingBuckets,
+    byAssignee: byAssignee.map((r) => ({ assignedTo: r.assigned_to, count: r.count })),
+    unassignedOpen,
+    dailyVolume,
     oldestOpen: rowToEnquiry(oldestOpen),
     avgResolutionHours,
+    resolvedCount: resolvedWithDuration.length,
     byClassifiedBy: Object.fromEntries(byClassifiedBy.map((r) => [r.classified_by, r.count])),
     lowConfidenceCount,
     last7Days,
@@ -293,6 +379,7 @@ function overviewStats() {
 module.exports = {
   ingestEmail,
   listEnquiries,
+  listEnquiriesForExport,
   getEnquiry,
   updateEnquiry,
   overviewStats,

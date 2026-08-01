@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { listEnquiries } from '../api';
+import { listEnquiries, getExportUrl } from '../api';
 import { PriorityBadge, StatusBadge, CategoryPill } from '../components/Badges';
 import { CATEGORY_OPTIONS, PRIORITY_OPTIONS, STATUS_OPTIONS, categoryLabel, priorityLabel, statusLabel } from '../taxonomy';
 
@@ -97,11 +97,18 @@ export default function Queue() {
         </select>
         <input
           type="search"
-          placeholder="Search subject, sender, PO#…"
+          placeholder="Search subject, sender, PO#, facility, assignee…"
           value={filters.search}
           onChange={update('search')}
         />
         <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{total} result{total === 1 ? '' : 's'}</span>
+        <a
+          className="export-link"
+          href={getExportUrl({ ...filters, sort, order })}
+          download
+        >
+          Export CSV
+        </a>
       </div>
 
       {error && <div className="error-state">{error}</div>}

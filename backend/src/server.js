@@ -8,12 +8,19 @@ const enquiriesRouter = require('./routes/enquiries');
 const statsRouter = require('./routes/stats');
 const ingestRouter = require('./routes/ingest');
 const { startScheduledPolling } = require('./graph/poller');
+const basicAuth = require('./auth/basicAuth');
 
 const app = express();
 const PORT = process.env.PORT || 4000;
 
 app.use(cors());
 app.use(express.json());
+
+if (basicAuth.isConfigured()) {
+  app.use(basicAuth.requireAuth);
+} else {
+  console.warn('[auth] DASHBOARD_USERNAME/DASHBOARD_PASSWORD not set — dashboard is reachable with no login. Fine for local dev, not recommended once real customer data is flowing through it.');
+}
 
 app.get('/api/health', (req, res) => res.json({ ok: true }));
 app.use('/api/enquiries', enquiriesRouter);

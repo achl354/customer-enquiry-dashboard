@@ -43,3 +43,12 @@ services:
         sync: false
       - key: MAILBOX
         sync: false
+      # HTTP Basic Auth in front of the whole dashboard — this shows real
+      # customer/health-department correspondence with no other access
+      # control, so set both of these once real data is flowing through it.
+      # Leaving either blank disables auth entirely (fine for a quick demo
+      # check, not once it's more than that).
+      - key: DASHBOARD_USERNAME
+        sync: false
+      - key: DASHBOARD_PASSWORD
+        sync: false

@@ -20,6 +20,53 @@ router.get('/', (req, res) => {
   res.json(result);
 });
 
+const CSV_COLUMNS = [
+  ['Received', (e) => e.receivedAt],
+  ['Sender name', (e) => e.sender.name || ''],
+  ['Sender email', (e) => e.sender.email || ''],
+  ['Subject', (e) => e.subject || ''],
+  ['Category', (e) => e.category],
+  ['Priority', (e) => e.priority],
+  ['Status', (e) => e.status],
+  ['Assigned to', (e) => e.assignedTo || ''],
+  ['Facility / org', (e) => e.extractedFields.facility || ''],
+  ['PO number', (e) => e.extractedFields.poNumber || ''],
+  ['Quote number', (e) => e.extractedFields.quoteNumber || ''],
+  ['Classified by', (e) => e.classifiedBy || ''],
+];
+
+// Double up any embedded quotes and wrap the field if it contains a comma,
+// quote, or newline — the minimal correct CSV escaping rule, no library
+// needed for a field set this simple.
+function csvField(value) {
+  const s = String(value ?? '');
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+// Same filters as the queue view, no pagination — for management/board
+// reporting rather than working the queue itself, so drafts/body content
+// are deliberately left out in favour of a lean, reportable column set.
+router.get('/export', (req, res) => {
+  const { category, priority, status, search, sort, order } = req.query;
+  const items = repo.listEnquiriesForExport({
+    category: category || undefined,
+    priority: priority || undefined,
+    status: status || undefined,
+    search: search || undefined,
+    sort: sort || undefined,
+    order: order || undefined,
+  });
+
+  const lines = [CSV_COLUMNS.map(([header]) => csvField(header)).join(',')];
+  for (const item of items) {
+    lines.push(CSV_COLUMNS.map(([, get]) => csvField(get(item))).join(','));
+  }
+
+  res.set('Content-Type', 'text/csv; charset=utf-8');
+  res.set('Content-Disposition', `attachment; filename="enquiries-export-${new Date().toISOString().slice(0, 10)}.csv"`);
+  res.send(lines.join('\n'));
+});
+
 router.get('/:id', (req, res) => {
   const enquiry = repo.getEnquiry(req.params.id);
   if (!enquiry) return res.status(404).json({ error: 'Enquiry not found' });

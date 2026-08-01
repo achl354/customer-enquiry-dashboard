@@ -42,6 +42,16 @@ export function getThreadHistory(id) {
   return request(`/enquiries/${encodeURIComponent(id)}/thread`);
 }
 
+// Returns a plain URL (not a fetch call) — the export button links to this
+// directly so the browser handles the file download/filename itself via
+// the response's Content-Disposition header.
+export function getExportUrl(params = {}) {
+  const query = new URLSearchParams(
+    Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== ''))
+  ).toString();
+  return `${API_BASE}/enquiries/export${query ? `?${query}` : ''}`;
+}
+
 export function getOverviewStats() {
   return request('/stats/overview');
 }

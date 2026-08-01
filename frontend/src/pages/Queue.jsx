@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { listEnquiries, getExportUrl } from '../api';
 import { PriorityBadge, StatusBadge, CategoryPill } from '../components/Badges';
+import { QueueSkeleton } from '../components/Skeletons';
 import { CATEGORY_OPTIONS, PRIORITY_OPTIONS, STATUS_OPTIONS, categoryLabel, priorityLabel, statusLabel } from '../taxonomy';
 
 const PAGE_SIZE = 25;
@@ -112,7 +113,7 @@ export default function Queue() {
       </div>
 
       {error && <div className="error-state">{error}</div>}
-      {!error && loading && items.length === 0 && <div className="loading">Loading…</div>}
+      {!error && loading && items.length === 0 && <QueueSkeleton />}
 
       {!error && (loading === false || items.length > 0) && (
         <>

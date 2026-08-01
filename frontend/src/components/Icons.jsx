@@ -104,6 +104,15 @@ export function IconMoon(props) {
   );
 }
 
+export function IconSearch(props) {
+  return (
+    <svg {...common} {...props}>
+      <circle cx="10.5" cy="10.5" r="6.5" />
+      <line x1="20" y1="20" x2="15.3" y2="15.3" />
+    </svg>
+  );
+}
+
 export function IconMonitor(props) {
   return (
     <svg {...common} {...props}>

@@ -3,8 +3,11 @@ import { Link } from 'react-router-dom';
 import { getOverviewStats } from '../api';
 import { BarList } from '../components/BarList';
 import { TrendChart } from '../components/TrendChart';
+import { Sparkline } from '../components/Sparkline';
+import { OverviewSkeleton } from '../components/Skeletons';
 import { IconLayers, IconInbox, IconAlertTriangle, IconClock, IconSparkle, IconEye } from '../components/Icons';
 import { categoryLabel, statusLabel } from '../taxonomy';
+import { useCountUp } from '../hooks/useCountUp';
 
 const STATUS_COLORS = {
   NEW: 'var(--series-1)',
@@ -33,8 +36,17 @@ export default function Overview() {
     getOverviewStats().then(setStats).catch((e) => setError(e.message));
   }, []);
 
+  // Hooks must run unconditionally, so these all sit above the
+  // loading/error early-returns below, fed with `null` until stats arrive.
+  const totalDisplay = useCountUp(stats?.total ?? null);
+  const openDisplay = useCountUp(stats?.openCount ?? null);
+  const urgentDisplay = useCountUp(stats?.urgentOpen ?? null);
+  const avgResolutionDisplay = useCountUp(stats?.avgResolutionHours ?? null, { decimals: 1 });
+  const aiClassifiedDisplay = useCountUp(stats?.byClassifiedBy?.ai ?? null);
+  const lowConfidenceDisplay = useCountUp(stats?.lowConfidenceCount ?? null);
+
   if (error) return <div className="error-state">Failed to load stats: {error}</div>;
-  if (!stats) return <div className="loading">Loading…</div>;
+  if (!stats) return <OverviewSkeleton />;
 
   const categoryData = Object.entries(stats.byCategory)
     .map(([key, value]) => ({ key, value, label: categoryLabel(key) }))
@@ -63,42 +75,49 @@ export default function Overview() {
 
   const hasEnoughResolved = stats.resolvedCount >= MIN_RESOLVED_SAMPLE;
 
+  // Real data only — the daily volume series is the one metric on this page
+  // with genuine history, so it's the only tile that gets a sparkline.
+  const sparklineValues = stats.dailyVolume.slice(-14).map((d) => d.count);
+
   return (
     <div>
       <h2>Team overview</h2>
 
       <div className="stat-grid">
-        <div className="stat-tile">
+        <div className="stat-tile stat-tile-in" style={{ animationDelay: '0ms' }}>
           <div className="stat-tile-header">
             <IconLayers className="stat-icon" />
             <div className="label">Total enquiries</div>
           </div>
-          <div className="value-row">
-            <div className="value">{stats.total}</div>
-            <div className={`trend ${trendDirection}`}>{trendText}</div>
+          <div className="stat-tile-body">
+            <div className="value-row">
+              <div className="value">{totalDisplay}</div>
+              <div className={`trend ${trendDirection}`}>{trendText}</div>
+            </div>
+            <Sparkline values={sparklineValues} />
           </div>
         </div>
-        <div className="stat-tile">
+        <div className="stat-tile stat-tile-in" style={{ animationDelay: '60ms' }}>
           <div className="stat-tile-header">
             <IconInbox className="stat-icon" />
             <div className="label">Open</div>
           </div>
-          <div className="value">{stats.openCount}</div>
+          <div className="value">{openDisplay}</div>
         </div>
-        <div className={`stat-tile${stats.urgentOpen > 0 ? ' attention' : ''}`}>
+        <div className={`stat-tile stat-tile-in${stats.urgentOpen > 0 ? ' attention' : ''}`} style={{ animationDelay: '120ms' }}>
           <div className="stat-tile-header">
             <IconAlertTriangle className="stat-icon" />
             <div className="label">Urgent &amp; open</div>
           </div>
-          <div className={`value ${stats.urgentOpen > 0 ? 'critical' : ''}`}>{stats.urgentOpen}</div>
+          <div className={`value ${stats.urgentOpen > 0 ? 'critical' : ''}`}>{urgentDisplay}</div>
         </div>
-        <div className="stat-tile">
+        <div className="stat-tile stat-tile-in" style={{ animationDelay: '180ms' }}>
           <div className="stat-tile-header">
             <IconClock className="stat-icon" />
             <div className="label">Avg. resolution time</div>
           </div>
           <div className="value">
-            {hasEnoughResolved ? `${stats.avgResolutionHours.toFixed(1)}h` : '—'}
+            {hasEnoughResolved ? `${avgResolutionDisplay}h` : '—'}
           </div>
           <div className="draft-hint">
             {stats.resolvedCount === 0
@@ -108,19 +127,19 @@ export default function Overview() {
                 : `only ${stats.resolvedCount} resolved so far — too few for a reliable average`}
           </div>
         </div>
-        <div className="stat-tile">
+        <div className="stat-tile stat-tile-in" style={{ animationDelay: '240ms' }}>
           <div className="stat-tile-header">
             <IconSparkle className="stat-icon" />
             <div className="label">Classified by AI</div>
           </div>
-          <div className="value">{stats.byClassifiedBy?.ai || 0}</div>
+          <div className="value">{aiClassifiedDisplay ?? 0}</div>
         </div>
-        <div className={`stat-tile${stats.lowConfidenceCount > 0 ? ' attention' : ''}`}>
+        <div className={`stat-tile stat-tile-in${stats.lowConfidenceCount > 0 ? ' attention' : ''}`} style={{ animationDelay: '300ms' }}>
           <div className="stat-tile-header">
             <IconEye className="stat-icon" />
             <div className="label">Low-confidence (needs review)</div>
           </div>
-          <div className={`value ${stats.lowConfidenceCount > 0 ? 'critical' : ''}`}>{stats.lowConfidenceCount}</div>
+          <div className={`value ${stats.lowConfidenceCount > 0 ? 'critical' : ''}`}>{lowConfidenceDisplay}</div>
         </div>
       </div>
 

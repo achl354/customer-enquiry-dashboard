@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { BrowserRouter, Routes, Route, NavLink, Link, Navigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, NavLink, Link, Navigate, useLocation } from 'react-router-dom';
 import Overview from './pages/Overview';
 import Queue from './pages/Queue';
 import Detail from './pages/Detail';
@@ -13,7 +13,9 @@ import {
   IconSun,
   IconMoon,
   IconMonitor,
+  IconSearch,
 } from './components/Icons';
+import { CommandPalette } from './components/CommandPalette';
 import logoFull from './assets/jdhg-logo-full-white.png';
 import './App.css';
 
@@ -29,6 +31,20 @@ function systemPrefersDark() {
     : false;
 }
 
+function AppRoutes() {
+  const location = useLocation();
+  return (
+    <div className="page-transition" key={location.pathname}>
+      <Routes>
+        <Route path="/" element={<Navigate to="/overview" replace />} />
+        <Route path="/overview" element={<Overview />} />
+        <Route path="/queue" element={<Queue />} />
+        <Route path="/enquiries/:id" element={<Detail />} />
+      </Routes>
+    </div>
+  );
+}
+
 function App() {
   const [stats, setStats] = useState(null);
   const [ingestStatus, setIngestStatus] = useState(null);
@@ -37,6 +53,18 @@ function App() {
     return saved === 'light' || saved === 'dark' ? saved : systemPrefersDark() ? 'dark' : 'light';
   });
   const [forceDesktop, setForceDesktop] = useState(() => localStorage.getItem(FORCE_DESKTOP_KEY) === '1');
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen(true);
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   useEffect(() => {
     const load = () => getOverviewStats().then(setStats).catch(() => {});
@@ -75,6 +103,11 @@ function App() {
           <div className="app-title">Enquiry Dashboard</div>
 
           <div className="sidebar-nav">
+            <button type="button" className="sidebar-search-btn" onClick={() => setPaletteOpen(true)}>
+              <IconSearch className="nav-icon" />
+              <span className="nav-label">Quick search</span>
+              <kbd className="sidebar-search-kbd">⌘K</kbd>
+            </button>
             <NavLink to="/overview" className={({ isActive }) => (isActive ? 'active' : '')}>
               <IconGrid className="nav-icon" />
               <span className="nav-label">Overview</span>
@@ -136,14 +169,10 @@ function App() {
           </div>
         </nav>
         <div className="main">
-          <Routes>
-            <Route path="/" element={<Navigate to="/overview" replace />} />
-            <Route path="/overview" element={<Overview />} />
-            <Route path="/queue" element={<Queue />} />
-            <Route path="/enquiries/:id" element={<Detail />} />
-          </Routes>
+          <AppRoutes />
         </div>
       </div>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
     </BrowserRouter>
   );
 }

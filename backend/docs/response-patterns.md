@@ -228,3 +228,36 @@ routing as a first-class suggested action, not just reply drafting.
   the priority right by luck (urgent-keyword match), but without a
   dedicated category it gets miscategorized as a product or supplier
   enquiry, which points staff at the wrong next action.
+
+**Found during a 47-message stratified accuracy pass over the 240-message
+real-mail sample (2026-08):**
+
+- An internal case/reference number abbreviated as "INV `<number>`" in a
+  subject (e.g. "PO2152 - INV 795822 Linen Tug Battery Not Charging") can
+  false-positive the invoice-billing check even when the actual topic is a
+  genuine equipment fault ("battery not charging") — "INV " isn't always
+  short for "invoice".
+- A "Purchase Order" reference carried over in the subject from an
+  unrelated admin thread (e.g. "Residential Services - Flora Hill -
+  Purchase Order for Job No: 177786") can route a message to PO/ETA even
+  when the actual content is a flat decline ("woollen blankets aren't a
+  product we supply") with nothing to do with dispatch/ETA status.
+- Spare-parts language ("parts from `<name>`", "order - parts") doesn't
+  distinguish direction — the same phrasing appears both when a customer
+  asks us for a part (customer-facing, answer directly) and when we're
+  sourcing a part from an external manufacturer/supplier (e.g. "Parts from
+  BMB" to a manufacturer contact) — the latter needs an internal-purchasing
+  reply shape, not a customer-facing one, and currently gets the wrong one.
+- Order-cancellation requests are folded into RETURNS_CREDIT for lack of a
+  better home (see the category note above) — the bucket is defensible,
+  but its suggestedAction/draftReply text ("confirm the returned item was
+  received, process the credit note") doesn't literally apply to a
+  pre-dispatch cancellation where nothing was ever shipped or returned.
+
+**Per-staff closing-line variation** worth reflecting in a personalized
+drafter rather than one generic sign-off: Scott Borresen's near-universal
+closer is "Please let me know if I can assist further. Thanks, and Best
+Regards." while Paula Perdomo's is "If I can be of further assistance,
+please do not hesitate to reach out. Best regards," — cosmetically similar
+but consistently different phrasing per person, on top of the
+title-over-time changes already noted above.

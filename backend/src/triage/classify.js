@@ -92,13 +92,13 @@ const SELF_RESOLVED_SIGNALS = [
 // or it gets misread as a routine spare-parts request.
 const COMPLAINT_SIGNALS = ['customer complaint', 'discontinue use', 'lot number', 'adverse event'];
 
-const RETURNS_SIGNALS = ['goods return', 'credit note', 'return label', 'item order in error', 'returned items'];
+const RETURNS_SIGNALS = ['goods return', 'credit note', 'return label', 'item order in error', 'returned items', 'cancellation', 'unable to process'];
 
 // Distinct from a genuine stock backorder: the order is held because the
 // customer's PO doesn't match current pricing, not because of a supply delay.
 const PRICE_DISCREPANCY_SIGNALS = ['price discrepancy', 'amended po', 'kindly update the pricing'];
 
-const LOGISTICS_SIGNALS = ['consignment', 'proof of delivery', 'redirect', 'pickup confirmation', 'pod attached'];
+const LOGISTICS_SIGNALS = ['consignment', 'proof of delivery', 'redirect', 'pickup confirmation', 'pod attached', 'pickup', 'pick up', 'redelivery', 're delivery'];
 
 const TRIAL_SIGNALS = ['trial request', 'trial of', 'would like to trial', 'request a trial', 'book a trial'];
 
@@ -174,13 +174,13 @@ function classify(email) {
     category = 'INTERNAL';
   } else if (includesAny(text, COMPLAINT_SIGNALS)) {
     category = 'PRODUCT_COMPLAINT';
-  } else if (includesAny(subject, ['enquiry from jd healthcare group website', 'new sales lead for'])) {
+  } else if (includesAny(subject, ['enquiry from jd healthcare group website', 'new sales lead for', 'submitted the form'])) {
     // Unambiguous forward/routing pattern — takes precedence over generic
     // body keywords (e.g. a website enquiry that mentions "pricing" would
     // otherwise get swallowed by the QUOTE_PRICING check below).
     category = 'PRODUCT_ENQUIRY';
   } else if (
-    includesAny(text, ['not inflating', 'not turning', 'malfunction', 'not working', 'stopped working', 'fault', 'faulty', 'broken', 'digs into', 'does not fit', "doesn't fit", 'failure', 'leaking', 'problem with'])
+    includesAny(text, ['not inflating', 'not turning', 'malfunction', 'not working', 'stopped working', 'fault', 'faulty', 'broken', 'digs into', 'does not fit', "doesn't fit", 'failure', 'leaking', 'problem with', 'repair', 'damage', 'damaged'])
   ) {
     category = 'EQUIPMENT_FAULT';
   } else if (includesAny(text, ['backorder'])) {
@@ -192,7 +192,7 @@ function classify(email) {
   } else if (KNOWN_LOGISTICS_DOMAINS.some((d) => senderDomain === d) || includesAny(text, LOGISTICS_SIGNALS)) {
     category = 'LOGISTICS_FREIGHT';
   } else if (
-    includesAny(text, ['purchase order', 'po#', 'eta', 'dispatch', 'despatch', 'delivery date', 'need by date']) ||
+    includesAny(text, ['purchase order', 'po#', 'eta', 'dispatch', 'despatch', 'delivery date', 'need by date', 'awaiting payment']) ||
     Object.keys(KNOWN_ORG_DOMAINS).some((d) => senderDomain === d || senderDomain.endsWith(`.${d}`))
   ) {
     category = 'PO_ETA_REQUEST';

@@ -17,7 +17,12 @@ services:
     # "vite: not found". The backend's own install doesn't need this since
     # it only ever runs `node src/server.js`, no dev-only build step.
     buildCommand: cd frontend && npm install --include=dev && npm run build && cd ../backend && npm install
-    startCommand: cd backend && npm start
+    # TEMPORARY: seeds the 114-email demo dataset on boot so the free tier's
+    # empty-on-every-restart database has something to look at. Revert this
+    # to plain "cd backend && npm start" once that's been seen — free tier
+    # has no shell/console access for a one-off command, and re-seeding on
+    # every restart means re-spending ~114 Claude API calls each time.
+    startCommand: cd backend && npm run seed && npm start
     healthCheckPath: /api/health
     envVars:
       - key: NODE_ENV

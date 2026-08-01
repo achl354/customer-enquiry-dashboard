@@ -143,14 +143,15 @@ test('quote/pricing request routes to QUOTE_PRICING', () => {
   assert.equal(r.priority, 'NORMAL');
 });
 
-test('spare-part lookup routes to PARTS_ENQUIRY, distinct from a quote or fault', () => {
+test('spare-part lookup routes to PRODUCT_ENQUIRY with part-specific suggestedAction, distinct from a quote or fault', () => {
   const r = classify(email({
     subject: 'RE: Hovertech hose replacement',
     bodyPreview: 'The part you want is PAHT-AIRHOSE5. The price is $144.88 + GST, I currently only have 4 in stock.',
     senderEmail: 'biomed@somehospital.org.au',
   }));
-  assert.equal(r.category, 'PARTS_ENQUIRY');
+  assert.equal(r.category, 'PRODUCT_ENQUIRY');
   assert.equal(r.priority, 'NORMAL');
+  assert.match(r.suggestedAction, /part code, price, and current stock/);
 });
 
 test('automated e-commerce order notification routes to ORDER_CONFIRMATION', () => {

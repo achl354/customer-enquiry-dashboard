@@ -93,8 +93,10 @@ Proof of Delivery for delivery disputes, or forward to Accounts
 backordered, give a specific estimated window (e.g. "last week of
 September") with an apology, same as PO/ETA handling.
 
-**Spare part enquiries** (category: PARTS_ENQUIRY) — replies are structured
-with exact fields:
+**Spare part enquiries** (category: PRODUCT_ENQUIRY, part-lookup sub-case —
+folded in rather than its own category, since it's the same "answer
+directly, no rep routing" shape as any other factual product enquiry)
+— replies are structured with exact fields:
 ```
 Code: PABM-FOOT PLATE NUT
 Description: I-MOVE Plastic Nut for Locking Pin on Foot Plate

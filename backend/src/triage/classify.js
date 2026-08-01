@@ -9,7 +9,6 @@ const CATEGORIES = [
   'INVOICE_BILLING',
   'LOGISTICS_FREIGHT',
   'QUOTE_PRICING',
-  'PARTS_ENQUIRY',
   'ORDER_CONFIRMATION',
   'PRODUCT_ENQUIRY',
   'SUPPLIER_VENDOR',
@@ -104,10 +103,12 @@ const LOGISTICS_SIGNALS = ['consignment', 'proof of delivery', 'redirect', 'pick
 
 const TRIAL_SIGNALS = ['trial request', 'trial of', 'would like to trial', 'request a trial', 'book a trial'];
 
-// Spare-parts lookups/sourcing — checked late (after QUOTE_PRICING) so a
-// parts thread that's really about pricing (e.g. "part codes... price list")
-// still lands in QUOTE_PRICING. Deliberately not a bare 'part' — that
-// substring also matches "important", "department", "apart", etc.
+// Spare-parts lookups/sourcing — a sub-case of PRODUCT_ENQUIRY (same audience
+// and reply shape: answer directly, no rep routing), just specific enough to
+// need its own suggestedAction/draftReply wording. Checked late (after
+// QUOTE_PRICING) so a parts thread that's really about pricing (e.g. "part
+// codes... price list") still lands in QUOTE_PRICING. Deliberately not a bare
+// 'part' — that substring also matches "important", "department", "apart".
 const PARTS_SIGNALS = ['parts from', 'order - parts', 'the part you want', "part's information", ' part - '];
 
 // Automated/new-order confirmations (e-commerce order notifications, or a
@@ -214,7 +215,12 @@ function classify(email) {
   } else if (includesAny(text, ORDER_CONFIRMATION_SIGNALS)) {
     category = 'ORDER_CONFIRMATION';
   } else if (includesAny(text, PARTS_SIGNALS)) {
-    category = 'PARTS_ENQUIRY';
+    // Not its own category — a part lookup is answered the same way as any
+    // other factual PRODUCT_ENQUIRY (see isPartLookup below), it just needs
+    // this explicit check to fire for outbound-authored replies too, where
+    // the sender is internal and the generic external-sender fallback below
+    // never reaches them.
+    category = 'PRODUCT_ENQUIRY';
   } else if (KNOWN_SUPPLIER_DOMAINS.some((d) => senderDomain === d)) {
     category = 'SUPPLIER_VENDOR';
   } else if (!isInternalSender) {
@@ -250,6 +256,7 @@ function classify(email) {
   const quoteNumber = extractQuoteNumber(text);
   const facility = isInternalSender ? null : orgNameForDomain(senderDomain);
   const isTrialRequest = category === 'PRODUCT_ENQUIRY' && includesAny(text, TRIAL_SIGNALS);
+  const isPartLookup = category === 'PRODUCT_ENQUIRY' && includesAny(text, PARTS_SIGNALS);
 
   // --- Suggested action ---
   const actionParams = {
@@ -260,6 +267,7 @@ function classify(email) {
     isPriceDiscrepancy,
     cityTag,
     isTrialRequest,
+    isPartLookup,
   };
   const suggestedAction = suggestedActionFor(category, actionParams);
   const draftReply = draftReplyFor(category, actionParams);
@@ -283,7 +291,7 @@ function classify(email) {
 // sales@jdhealthcare.com.au (see backend/docs/response-patterns.md), not
 // generic guesses — e.g. PO/ETA and equipment-fault replies both route
 // through an internal check before anything goes back to the customer.
-function suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfResolvedFeedback, isPriceDiscrepancy, cityTag, isTrialRequest }) {
+function suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfResolvedFeedback, isPriceDiscrepancy, cityTag, isTrialRequest, isPartLookup }) {
   switch (category) {
     case 'PRODUCT_COMPLAINT':
       return 'Formal/adverse-event complaint — route to Graham Lade and Scott Borresen, ask the customer to discontinue use, and capture the product code, LOT number, and expiry before responding further.';
@@ -307,8 +315,6 @@ function suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfR
       return 'Coordinate directly with the courier/freight contact on the thread (consignment redirect, pickup, or proof of delivery) rather than treating this as a product enquiry.';
     case 'QUOTE_PRICING':
       return `Confirm current stock and pricing with the sales rep${quoteNumber ? ` for quote ${quoteNumber}` : ''} before replying — send the quote if in stock, or a specific backorder ETA with an apology if not.`;
-    case 'PARTS_ENQUIRY':
-      return 'Confirm the exact part code, price, and current stock count with the parts/warehouse team before replying with that specific information.';
     case 'ORDER_CONFIRMATION':
       return `Confirm the order details${facility ? ` for ${facility}` : ''}${poNumber ? ` (PO ${poNumber})` : ''} and, if this is a new customer, confirm prepayment/account setup before replying with next steps.`;
     case 'PRODUCT_ENQUIRY': {
@@ -318,6 +324,9 @@ function suggestedActionFor(category, { poNumber, quoteNumber, facility, isSelfR
       }
       if (routedRep) {
         return `Website/sales-lead enquiry tagged [${cityTag}] — forward to ${routedRep} with a short intro note rather than answering directly.`;
+      }
+      if (isPartLookup) {
+        return 'Confirm the exact part code, price, and current stock count with the parts/warehouse team before replying with that specific information.';
       }
       return "If it's a simple factual/compatibility question, answer directly using the spec sheet (match the customer's exact figures). If it's a sales lead, trial request, or needs product expertise, forward internally to the relevant specialist with a short intro note.";
     }
@@ -338,7 +347,7 @@ const SIGNATURE = 'Kind regards,\n[Your name]\nOperations Coordinator\nJD Health
 // available here, so these are generic placeholders staff fill in, not
 // personalized like the AI drafts. Still gives every enquiry *something*
 // rather than nothing when running in rules-only mode.
-function draftReplyFor(category, { poNumber, quoteNumber, facility, isSelfResolvedFeedback, isPriceDiscrepancy, cityTag, isTrialRequest }) {
+function draftReplyFor(category, { poNumber, quoteNumber, facility, isSelfResolvedFeedback, isPriceDiscrepancy, cityTag, isTrialRequest, isPartLookup }) {
   switch (category) {
     case 'PRODUCT_COMPLAINT':
       // Real Sent Items show this goes to the customer immediately (discontinue
@@ -365,8 +374,6 @@ function draftReplyFor(category, { poNumber, quoteNumber, facility, isSelfResolv
       return `Hi [courier contact],\n\nCould you please assist with the consignment/pickup detailed below${poNumber ? ` (PO ${poNumber})` : ''}?\n\nThanks,\n[Your name]`;
     case 'QUOTE_PRICING':
       return `Hi there,\n\nThank you for contacting us. I'm confirming current stock and pricing${quoteNumber ? ` for quote ${quoteNumber}` : ''} and will send this through shortly.\n\n${SIGNATURE}`;
-    case 'PARTS_ENQUIRY':
-      return `Hi there,\n\nThank you for contacting us. I'm confirming the part code, price, and current stock and will send this through shortly.\n\n${SIGNATURE}`;
     case 'ORDER_CONFIRMATION':
       return `Hi there,\n\nThank you for your order${facility ? ` for ${facility}` : ''}${poNumber ? ` (PO ${poNumber})` : ''}. I'm confirming the account/payment details and will follow up shortly with next steps.\n\n${SIGNATURE}`;
     case 'PRODUCT_ENQUIRY': {
@@ -376,6 +383,9 @@ function draftReplyFor(category, { poNumber, quoteNumber, facility, isSelfResolv
       }
       if (routedRep) {
         return `Hi ${routedRep},\n\nCould you please assist with the enquiry below${facility ? ` from ${facility}` : ''} when you get a chance?\n\nThanks,\n[Your name]`;
+      }
+      if (isPartLookup) {
+        return `Hi there,\n\nThank you for contacting us. I'm confirming the part code, price, and current stock and will send this through shortly.\n\n${SIGNATURE}`;
       }
       return `Hi there,\n\nThank you for contacting us.\n\n${SIGNATURE}`;
     }

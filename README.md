@@ -216,6 +216,31 @@ This runs as part of every `runPollOnce()` (scheduled poll or manual
 counts. There's currently no reverse direction — changing status in the
 dashboard doesn't set the Outlook flag.
 
+## Status sync (reply/forward detection)
+
+Separately from the Outlook flag, every poll also checks whether staff have
+actually replied to or forwarded an enquiry — without needing anyone to flag
+anything manually. Each enquiry stores its Graph `conversationId`; the poller
+checks Sent Items for any message in that same conversation via `$batch`
+(`fetchReplyStatus` in `graph/client.js`):
+
+- A reply/forward is found **and its recipients overlap the original
+  sender's domain** (a genuine customer-facing reply) → status advances to
+  `WAITING_ON_CUSTOMER`.
+- A reply/forward is found **with only internal (`jdhealthcare.com.au`)
+  recipients** (e.g. forwarded to a colleague for action) → status advances
+  to `IN_PROGRESS`.
+- No reply found → no change.
+
+Like the flag sync, this only ever *advances* status (via a status "rank" —
+`statusForReply` in `db/repository.js`) — it never downgrades something
+staff already set further along (e.g. won't move an already-`RESOLVED`
+enquiry back to `WAITING_ON_CUSTOMER` just because it finds an old reply).
+Runs as part of every `runPollOnce()` alongside the flag sync, adding
+`repliesChecked`/`repliesUpdated` to the response. Enquiries without a
+`conversationId` (seed data, or anything ingested before this feature
+existed) are skipped — nothing to check them against.
+
 ## Deploying to Render
 
 `render.yaml` at the repo root is a Render Blueprint — it defines everything

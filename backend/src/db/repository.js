@@ -14,18 +14,35 @@ function statusForFlag(flagStatus) {
   return null;
 }
 
+// Status "rank" so reply-detection (and anything similar) can only ever
+// advance an enquiry forward, never undo a status staff already set
+// themselves — e.g. a stale/old reply shouldn't demote a RESOLVED enquiry
+// back to WAITING_ON_CUSTOMER.
+const STATUS_RANK = { NEW: 0, IN_PROGRESS: 1, WAITING_ON_CUSTOMER: 2, RESOLVED: 3, IGNORED: 3 };
+
+// A reply/forward was found in Sent Items for this enquiry's conversation.
+// Customer-facing (recipients overlap the original external sender's domain)
+// -> WAITING_ON_CUSTOMER (we replied, now waiting on them). Internal-only
+// recipients -> IN_PROGRESS (staff started working it, e.g. forwarded to a
+// colleague). Only applied if it's a genuine advance over the current status.
+function statusForReply(isCustomerFacing, currentStatus) {
+  const candidate = isCustomerFacing ? 'WAITING_ON_CUSTOMER' : 'IN_PROGRESS';
+  if (STATUS_RANK[candidate] > (STATUS_RANK[currentStatus] ?? 0)) return candidate;
+  return null;
+}
+
 const insertStmt = db.prepare(`
   INSERT INTO enquiries (
     id, graph_message_id, internet_message_id, received_at, sender_name, sender_email,
     recipients, subject, body_preview, has_attachments, importance, web_link,
     category, priority, po_number, quote_number, facility, sender_domain, city_tag,
-    suggested_action, draft_reply, confidence, classified_by,
+    conversation_id, suggested_action, draft_reply, confidence, classified_by,
     status, assigned_to, created_at, updated_at
   ) VALUES (
     @id, @graphMessageId, @internetMessageId, @receivedAt, @senderName, @senderEmail,
     @recipients, @subject, @bodyPreview, @hasAttachments, @importance, @webLink,
     @category, @priority, @poNumber, @quoteNumber, @facility, @senderDomain, @cityTag,
-    @suggestedAction, @draftReply, @confidence, @classifiedBy,
+    @conversationId, @suggestedAction, @draftReply, @confidence, @classifiedBy,
     @status, @assignedTo, @createdAt, @updatedAt
   )
   ON CONFLICT(graph_message_id) DO NOTHING
@@ -61,6 +78,7 @@ async function ingestEmail(raw) {
     facility: result.extractedFields.facility,
     senderDomain: result.extractedFields.senderDomain,
     cityTag: result.extractedFields.cityTag || null,
+    conversationId: raw.conversationId || null,
     suggestedAction: result.suggestedAction,
     draftReply: result.draftReply || null,
     confidence: result.confidence == null ? null : result.confidence,
@@ -97,6 +115,7 @@ function rowToEnquiry(row) {
       senderDomain: row.sender_domain,
       cityTag: row.city_tag,
     },
+    conversationId: row.conversation_id,
     suggestedAction: row.suggested_action,
     draftReply: row.draft_reply,
     confidence: row.confidence,
@@ -187,6 +206,25 @@ function listOpenEnquiriesForFlagSync() {
     .map((r) => ({ id: r.id, graphMessageId: r.graph_message_id, status: r.status }));
 }
 
+// Same idea, for reply-detection — also needs conversation_id (absent on
+// seed records and any message ingested before this feature existed) and
+// the original sender's domain, to tell a customer-facing reply apart from
+// a purely internal forward.
+function listOpenEnquiriesForReplySync() {
+  return db
+    .prepare(
+      "SELECT id, graph_message_id, conversation_id, status, sender_domain FROM enquiries WHERE status NOT IN ('RESOLVED', 'IGNORED') AND graph_message_id IS NOT NULL AND conversation_id IS NOT NULL"
+    )
+    .all()
+    .map((r) => ({
+      id: r.id,
+      graphMessageId: r.graph_message_id,
+      conversationId: r.conversation_id,
+      status: r.status,
+      senderDomain: r.sender_domain,
+    }));
+}
+
 function overviewStats() {
   // Real week-over-week volume comparison (by received_at), not a fabricated
   // trend — used for the "Total enquiries" delta indicator on Overview.
@@ -259,5 +297,7 @@ module.exports = {
   updateEnquiry,
   overviewStats,
   listOpenEnquiriesForFlagSync,
+  listOpenEnquiriesForReplySync,
   statusForFlag,
+  statusForReply,
 };

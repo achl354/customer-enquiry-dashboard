@@ -1,6 +1,7 @@
 const cron = require('node-cron');
 const graphClient = require('./client');
 const repo = require('../db/repository');
+const { domainOf } = require('../triage/classify');
 
 let lastPollAt = null;
 let task = null;
@@ -38,6 +39,39 @@ async function syncFlagStatuses() {
   return { checked: open.length, updated };
 }
 
+/**
+ * Re-check open enquiries' conversationId against Sent Items — i.e. "has
+ * staff already replied to or forwarded this?" — and advance status
+ * accordingly: a customer-facing reply (recipients overlap the original
+ * sender's domain) moves to WAITING_ON_CUSTOMER; a purely internal forward
+ * moves to IN_PROGRESS. Same "only ever advance" rule as flag sync — this
+ * never undoes a more specific status staff already set (statusForReply
+ * handles that via STATUS_RANK).
+ */
+async function syncReplyStatuses() {
+  const open = repo.listOpenEnquiriesForReplySync();
+  if (open.length === 0) return { checked: 0, updated: 0 };
+
+  const replies = await graphClient.fetchReplyStatus(
+    open.map((e) => ({ graphMessageId: e.graphMessageId, conversationId: e.conversationId }))
+  );
+
+  let updated = 0;
+  for (const enquiry of open) {
+    const reply = replies.get(enquiry.graphMessageId);
+    if (!reply || !reply.hasReply) continue;
+
+    const isCustomerFacing = reply.recipients.some((addr) => domainOf(addr) === enquiry.senderDomain);
+    const nextStatus = repo.statusForReply(isCustomerFacing, enquiry.status);
+    if (nextStatus) {
+      repo.updateEnquiry(enquiry.id, { status: nextStatus });
+      updated += 1;
+    }
+  }
+
+  return { checked: open.length, updated };
+}
+
 async function runPollOnce() {
   const sinceIso = lastPollAt;
   const messages = await graphClient.fetchMessagesSince(sinceIso);
@@ -49,6 +83,7 @@ async function runPollOnce() {
   }
 
   const flagSync = await syncFlagStatuses();
+  const replySync = await syncReplyStatuses();
 
   lastPollAt = new Date().toISOString();
   return {
@@ -56,6 +91,8 @@ async function runPollOnce() {
     ingested,
     flagsChecked: flagSync.checked,
     flagsUpdated: flagSync.updated,
+    repliesChecked: replySync.checked,
+    repliesUpdated: replySync.updated,
     polledAt: lastPollAt,
   };
 }
@@ -76,7 +113,7 @@ function startScheduledPolling(cronExpression = process.env.POLL_CRON_EXPRESSION
     try {
       const result = await runPollOnce();
       console.log(
-        `[graph-poller] Polled: fetched=${result.fetched} ingested=${result.ingested} flagsChecked=${result.flagsChecked} flagsUpdated=${result.flagsUpdated}`
+        `[graph-poller] Polled: fetched=${result.fetched} ingested=${result.ingested} flagsChecked=${result.flagsChecked} flagsUpdated=${result.flagsUpdated} repliesChecked=${result.repliesChecked} repliesUpdated=${result.repliesUpdated}`
       );
     } catch (err) {
       console.error('[graph-poller] Poll failed:', err.message);
@@ -86,4 +123,4 @@ function startScheduledPolling(cronExpression = process.env.POLL_CRON_EXPRESSION
   return task;
 }
 
-module.exports = { isGraphConfigured, runPollOnce, syncFlagStatuses, startScheduledPolling };
+module.exports = { isGraphConfigured, runPollOnce, syncFlagStatuses, syncReplyStatuses, startScheduledPolling };

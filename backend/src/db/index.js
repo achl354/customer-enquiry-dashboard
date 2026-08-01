@@ -30,6 +30,7 @@ db.exec(`
     facility TEXT,
     sender_domain TEXT,
     city_tag TEXT,
+    conversation_id TEXT,
     suggested_action TEXT,
     draft_reply TEXT,
     confidence REAL,

@@ -34,7 +34,7 @@ async function fetchMessagesSince(sinceIso) {
   const token = await getAccessToken();
   const mailbox = encodeURIComponent(process.env.MAILBOX);
   const filter = sinceIso ? `&$filter=receivedDateTime ge ${sinceIso}` : '';
-  const select = '$select=id,internetMessageId,subject,bodyPreview,receivedDateTime,from,toRecipients,hasAttachments,importance,webLink,flag';
+  const select = '$select=id,internetMessageId,subject,bodyPreview,receivedDateTime,from,toRecipients,hasAttachments,importance,webLink,flag,conversationId';
   const url = `${GRAPH_BASE}/users/${mailbox}/mailFolders/inbox/messages?${select}${filter}&$orderby=receivedDateTime desc&$top=50`;
 
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
@@ -60,6 +60,7 @@ function toRawEmail(msg) {
     importance: msg.importance || 'normal',
     webLink: msg.webLink || null,
     flagStatus: msg.flag?.flagStatus || null,
+    conversationId: msg.conversationId || null,
   };
 }
 
@@ -114,4 +115,53 @@ async function fetchMessageFlags(messageIds) {
   return results;
 }
 
-module.exports = { isConfigured, fetchMessagesSince, fetchMessageFlags, toRawEmail };
+/**
+ * For each { graphMessageId, conversationId } pair, check Sent Items for any
+ * message in the same conversation — i.e. "has staff already replied to or
+ * forwarded this enquiry?" — via the $batch endpoint. Returns a Map of
+ * graphMessageId -> { hasReply, recipients } where `recipients` is every
+ * to/cc address across matching Sent Items messages (used by the caller to
+ * tell a customer-facing reply from a purely internal forward). A
+ * conversationId that no longer resolves (e.g. very old/purged mail) is
+ * skipped silently rather than failing the whole batch.
+ */
+async function fetchReplyStatus(items) {
+  if (items.length === 0) return new Map();
+  const token = await getAccessToken();
+  const mailbox = encodeURIComponent(process.env.MAILBOX);
+  const results = new Map();
+
+  for (const batch of chunk(items, BATCH_CHUNK_SIZE)) {
+    const body = {
+      requests: batch.map((item, i) => ({
+        id: String(i),
+        method: 'GET',
+        url: `/users/${mailbox}/mailFolders/sentitems/messages?$filter=conversationId eq '${encodeURIComponent(item.conversationId)}'&$select=toRecipients,ccRecipients,sentDateTime&$orderby=sentDateTime desc&$top=3`,
+      })),
+    };
+    const res = await fetch(GRAPH_BATCH_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) {
+      const errBody = await res.text();
+      throw new Error(`Graph batch API error ${res.status}: ${errBody}`);
+    }
+    const data = await res.json();
+    for (const r of data.responses || []) {
+      const item = batch[Number(r.id)];
+      if (r.status !== 200) continue; // skip silently, e.g. conversationId no longer valid
+      const sentMessages = r.body?.value || [];
+      const recipients = sentMessages
+        .flatMap((m) => [...(m.toRecipients || []), ...(m.ccRecipients || [])])
+        .map((rec) => rec.emailAddress?.address)
+        .filter(Boolean);
+      results.set(item.graphMessageId, { hasReply: sentMessages.length > 0, recipients });
+    }
+  }
+
+  return results;
+}
+
+module.exports = { isConfigured, fetchMessagesSince, fetchMessageFlags, fetchReplyStatus, toRawEmail };

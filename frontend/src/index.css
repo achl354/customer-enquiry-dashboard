@@ -91,11 +91,16 @@
   box-sizing: border-box;
 }
 
+html {
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
   font-family: 'Questrial', system-ui, -apple-system, 'Segoe UI', sans-serif;
   background: var(--page-plane);
   color: var(--text-primary);
+  overflow-x: hidden;
 }
 
 #root {

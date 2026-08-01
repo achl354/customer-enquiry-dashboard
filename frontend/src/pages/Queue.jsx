@@ -117,6 +117,7 @@ export default function Queue() {
 
       {!error && (loading === false || items.length > 0) && (
         <>
+          <div className="table-scroll">
           <table className="enquiry-table">
             <thead>
               <tr>
@@ -158,6 +159,7 @@ export default function Queue() {
               )}
             </tbody>
           </table>
+          </div>
 
           {total > PAGE_SIZE && (
             <div className="pagination">

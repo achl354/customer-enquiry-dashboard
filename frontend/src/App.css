@@ -233,6 +233,12 @@
 
 .main {
   flex: 1;
+  /* Flex items default to a min-width based on their content ("min-width:
+     auto"), so without this a wide panel/table can force .main past the
+     space actually available next to the sidebar — blowing out the whole
+     page's layout viewport on a narrow screen (the sidebar then renders
+     "short" because the browser zooms the entire layout out to fit). */
+  min-width: 0;
   padding: 32px 40px;
   max-width: 1320px;
 }
@@ -264,6 +270,47 @@
 @media (max-width: 560px) {
   .stat-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Below phone width, the full 248px sidebar leaves too little room for
+   .main to be usable (this is what was forcing the whole page to blow out
+   its layout viewport and render "zoomed out" — see the .main min-width
+   fix above). Collapse it to an icon-only rail instead of a fixed sidebar,
+   same pattern as Slack/Linear/Notion's mobile nav. */
+@media (max-width: 640px) {
+  .sidebar {
+    width: 64px;
+    padding: 16px 8px;
+  }
+
+  .brand {
+    margin: 0 0 12px;
+  }
+
+  .brand-logo {
+    max-width: 40px;
+  }
+
+  .app-title,
+  .sidebar-section,
+  .nav-label,
+  .nav-count,
+  .sidebar-search-kbd,
+  .sidebar-toggle-btn span,
+  .sidebar-status-row span {
+    display: none;
+  }
+
+  .sidebar a,
+  .sidebar-search-btn,
+  .sidebar-toggle-btn {
+    justify-content: center;
+    padding: 10px 6px;
+  }
+
+  .sidebar-status-row {
+    justify-content: center;
   }
 }
 
@@ -546,8 +593,19 @@
 }
 
 /* Table */
+/* The table's columns need more room than a phone screen has (hence the
+   nowrap headers) — scope the horizontal scroll to this wrapper so a
+   narrow viewport scrolls just the table, instead of the whole page
+   stretching to fit it (which was blowing out the layout viewport and
+   making the sidebar/whole app render zoomed-out on mobile). */
+.table-scroll {
+  overflow-x: auto;
+  border-radius: var(--card-radius);
+}
+
 .enquiry-table {
   width: 100%;
+  min-width: 720px;
   border-collapse: collapse;
   background: var(--surface-1);
   border: 1px solid var(--border);

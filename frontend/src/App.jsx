@@ -17,7 +17,10 @@ import {
 } from './components/Icons';
 import { CommandPalette } from './components/CommandPalette';
 import logoFull from './assets/jdhg-logo-full-white.png';
-import logoMark from './assets/jdhg-mark-white.png';
+// The original jdhg-mark-white.png has ~60px of transparent padding on its
+// right edge only, which throws off centering at icon size — this is a
+// pre-trimmed copy so margin:auto centers the actual diamond, not its box.
+import logoMark from './assets/jdhg-mark-white-trimmed.png';
 import './App.css';
 
 const STATS_REFRESH_MS = 60000;

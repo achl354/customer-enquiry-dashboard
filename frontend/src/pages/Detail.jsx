@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { getEnquiry, updateEnquiry, generateDraft, getThreadHistory } from '../api';
 import { PriorityBadge, StatusBadge, CategoryPill } from '../components/Badges';
-import { STATUS_OPTIONS, statusLabel } from '../taxonomy';
 
 export default function Detail() {
   const { id } = useParams();
@@ -75,18 +74,6 @@ export default function Detail() {
       setThreadError(e.message);
     } finally {
       setThreadLoading(false);
-    }
-  }
-
-  async function handleStatusChange(e) {
-    const status = e.target.value;
-    setEnquiry((prev) => ({ ...prev, status }));
-    setSaving(true);
-    try {
-      const updated = await updateEnquiry(id, { status });
-      setEnquiry(updated);
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -246,13 +233,13 @@ export default function Detail() {
           <div className="panel">
             <h3>Manage</h3>
             <div className="control-row">
-              <label htmlFor="status-select">Status</label>
-              <select id="status-select" value={enquiry.status} onChange={handleStatusChange} disabled={saving}>
-                {STATUS_OPTIONS.map((s) => (
-                  <option key={s} value={s}>{statusLabel(s)}</option>
-                ))}
-              </select>
+              <label>Status</label>
+              <StatusBadge status={enquiry.status} />
             </div>
+            <p className="draft-hint" style={{ margin: '4px 0 16px' }}>
+              Synced automatically from Outlook (follow-up flags and replies) — take the
+              actual action (reply, flag) in Outlook and this will catch up on the next poll.
+            </p>
             <div className="control-row">
               <label htmlFor="assignee-input">Assigned to</label>
               <input

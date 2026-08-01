@@ -101,7 +101,7 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 |---|---|
 | `GET /api/enquiries?category=&priority=&status=&search=&sort=&order=` | List/filter enquiries |
 | `GET /api/enquiries/:id` | Single enquiry, full detail |
-| `PATCH /api/enquiries/:id` | Update `status` and/or `assignedTo` |
+| `PATCH /api/enquiries/:id` | Update `assignedTo` (dashboard-only; `status` is read-only — rejected with 400 if sent, since it's derived from Outlook, see "Status sync" below) |
 | `GET /api/stats/overview` | Counts by category/status/priority, oldest open, avg resolution time |
 | `GET /api/ingest/status` | Whether live Graph polling and AI classification are configured |
 | `POST /api/ingest/run` | Manually trigger one poll cycle |
@@ -243,24 +243,27 @@ poller silently no-ops.
 
 ## Status sync (Outlook follow-up flags)
 
-Staff already use Outlook's follow-up flag to mark a thread done — rather
-than asking them to also update status in the dashboard, every poll cycle
-re-checks each open enquiry's flag via Graph's `$batch` endpoint and syncs
-it into `status`:
+The dashboard is an add-on triage layer, not the system of record — staff
+take the actual action (reply, flag a thread done) in Outlook, same as
+before this existed, and `status` flows one-way from there into the
+dashboard. It cannot be set manually in the dashboard (`PATCH` rejects a
+`status` field with 400) precisely so it can't drift from what Outlook
+actually shows. Every poll cycle re-checks each open enquiry's flag via
+Graph's `$batch` endpoint and syncs it into `status`:
 
 - Flag set to **Complete** → dashboard status becomes `RESOLVED`, regardless
   of its current status. This is treated as the strongest signal, since a
   human explicitly marked the thread finished in Outlook.
 - Flag set to **Flagged** (follow-up, not yet complete) → only advances a
   still-untouched `NEW` enquiry to `IN_PROGRESS`. It never downgrades a more
-  specific status staff already set themselves in the dashboard (e.g.
+  advanced status the reply-detection sync (below) already set (e.g.
   `WAITING_ON_CUSTOMER`).
 - No flag → no change either way; it's not evidence the enquiry is still new.
 
 This runs as part of every `runPollOnce()` (scheduled poll or manual
 `POST /api/ingest/run`), which now also returns `flagsChecked`/`flagsUpdated`
-counts. There's currently no reverse direction — changing status in the
-dashboard doesn't set the Outlook flag.
+counts. There's no reverse direction — the dashboard never writes a flag (or
+anything else) back to Outlook.
 
 ## Status sync (reply/forward detection)
 
@@ -279,8 +282,8 @@ checks Sent Items for any message in that same conversation via `$batch`
 - No reply found → no change.
 
 Like the flag sync, this only ever *advances* status (via a status "rank" —
-`statusForReply` in `db/repository.js`) — it never downgrades something
-staff already set further along (e.g. won't move an already-`RESOLVED`
+`statusForReply` in `db/repository.js`) — it never downgrades something the
+flag sync already set further along (e.g. won't move an already-`RESOLVED`
 enquiry back to `WAITING_ON_CUSTOMER` just because it finds an old reply).
 Runs as part of every `runPollOnce()` alongside the flag sync, adding
 `repliesChecked`/`repliesUpdated` to the response. Enquiries without a

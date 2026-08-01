@@ -5,8 +5,6 @@ const graphClient = require('../graph/client');
 
 const router = express.Router();
 
-const VALID_STATUSES = ['NEW', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER', 'RESOLVED', 'IGNORED'];
-
 router.get('/', (req, res) => {
   const { category, priority, status, search, sort, order, limit, offset } = req.query;
   const result = repo.listEnquiries({
@@ -28,15 +26,23 @@ router.get('/:id', (req, res) => {
   res.json(enquiry);
 });
 
+// Status is intentionally not settable here. The dashboard is an add-on
+// triage layer, not the system of record — staff take real actions (reply,
+// resolve, flag) in Outlook, and status flows one-way from there via the
+// poller's flag sync and reply/forward detection (see graph/poller.js).
+// Letting staff also set it manually here would let the dashboard drift
+// out of sync with what Outlook actually shows. Assigned-to has no Outlook
+// equivalent (it's a dashboard-only team-coordination field), so it stays
+// editable.
 router.patch('/:id', (req, res) => {
   const { status, assignedTo } = req.body || {};
-  if (status !== undefined && !VALID_STATUSES.includes(status)) {
-    return res.status(400).json({ error: `Invalid status. Must be one of: ${VALID_STATUSES.join(', ')}` });
+  if (status !== undefined) {
+    return res.status(400).json({ error: 'Status can\'t be set manually — it syncs automatically from Outlook (flags and replies).' });
   }
   const existing = repo.getEnquiry(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Enquiry not found' });
 
-  const updated = repo.updateEnquiry(req.params.id, { status, assignedTo });
+  const updated = repo.updateEnquiry(req.params.id, { assignedTo });
   res.json(updated);
 });
 

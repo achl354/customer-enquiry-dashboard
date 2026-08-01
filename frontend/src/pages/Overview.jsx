@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { getOverviewStats } from '../api';
 import { BarList } from '../components/BarList';
 import { TrendChart } from '../components/TrendChart';
+import { IconLayers, IconInbox, IconAlertTriangle, IconClock, IconSparkle, IconEye } from '../components/Icons';
 import { categoryLabel, statusLabel } from '../taxonomy';
 
 const STATUS_COLORS = {
@@ -68,22 +69,34 @@ export default function Overview() {
 
       <div className="stat-grid">
         <div className="stat-tile">
-          <div className="label">Total enquiries</div>
+          <div className="stat-tile-header">
+            <IconLayers className="stat-icon" />
+            <div className="label">Total enquiries</div>
+          </div>
           <div className="value-row">
             <div className="value">{stats.total}</div>
             <div className={`trend ${trendDirection}`}>{trendText}</div>
           </div>
         </div>
         <div className="stat-tile">
-          <div className="label">Open</div>
+          <div className="stat-tile-header">
+            <IconInbox className="stat-icon" />
+            <div className="label">Open</div>
+          </div>
           <div className="value">{stats.openCount}</div>
         </div>
-        <div className="stat-tile">
-          <div className="label">Urgent &amp; open</div>
+        <div className={`stat-tile${stats.urgentOpen > 0 ? ' attention' : ''}`}>
+          <div className="stat-tile-header">
+            <IconAlertTriangle className="stat-icon" />
+            <div className="label">Urgent &amp; open</div>
+          </div>
           <div className={`value ${stats.urgentOpen > 0 ? 'critical' : ''}`}>{stats.urgentOpen}</div>
         </div>
         <div className="stat-tile">
-          <div className="label">Avg. resolution time</div>
+          <div className="stat-tile-header">
+            <IconClock className="stat-icon" />
+            <div className="label">Avg. resolution time</div>
+          </div>
           <div className="value">
             {hasEnoughResolved ? `${stats.avgResolutionHours.toFixed(1)}h` : '—'}
           </div>
@@ -96,11 +109,17 @@ export default function Overview() {
           </div>
         </div>
         <div className="stat-tile">
-          <div className="label">Classified by AI</div>
+          <div className="stat-tile-header">
+            <IconSparkle className="stat-icon" />
+            <div className="label">Classified by AI</div>
+          </div>
           <div className="value">{stats.byClassifiedBy?.ai || 0}</div>
         </div>
-        <div className="stat-tile">
-          <div className="label">Low-confidence (needs review)</div>
+        <div className={`stat-tile${stats.lowConfidenceCount > 0 ? ' attention' : ''}`}>
+          <div className="stat-tile-header">
+            <IconEye className="stat-icon" />
+            <div className="label">Low-confidence (needs review)</div>
+          </div>
           <div className={`value ${stats.lowConfidenceCount > 0 ? 'critical' : ''}`}>{stats.lowConfidenceCount}</div>
         </div>
       </div>

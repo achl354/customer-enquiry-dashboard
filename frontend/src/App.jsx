@@ -17,6 +17,7 @@ import {
 } from './components/Icons';
 import { CommandPalette } from './components/CommandPalette';
 import logoFull from './assets/jdhg-logo-full-white.png';
+import logoMark from './assets/jdhg-mark-white.png';
 import './App.css';
 
 const STATS_REFRESH_MS = 60000;
@@ -98,7 +99,8 @@ function App() {
       <div className={`app-shell${forceDesktop ? ' force-desktop' : ''}`}>
         <nav className="sidebar">
           <div className="brand">
-            <img className="brand-logo" src={logoFull} alt="JD Healthcare Group" />
+            <img className="brand-logo brand-logo-full" src={logoFull} alt="JD Healthcare Group" />
+            <img className="brand-logo brand-logo-mark" src={logoMark} alt="JD Healthcare Group" />
           </div>
           <div className="app-title">Enquiry Dashboard</div>
 

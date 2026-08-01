@@ -26,6 +26,14 @@
   display: block;
 }
 
+/* The full lockup is a wide horizontal wordmark (588x3316) — shrinking it
+   to icon-rail width makes the diamond mark itself a barely-visible
+   sliver, so the mobile rail swaps in the square standalone mark instead
+   (see the 640px breakpoint below). */
+.brand-logo-mark {
+  display: none;
+}
+
 .app-title {
   font-size: 12px;
   font-weight: 500;
@@ -288,8 +296,14 @@
     margin: 0 0 12px;
   }
 
-  .brand-logo {
-    max-width: 40px;
+  .brand-logo-full {
+    display: none;
+  }
+
+  .brand-logo-mark {
+    display: block;
+    max-width: 34px;
+    margin: 0 auto;
   }
 
   .app-title,

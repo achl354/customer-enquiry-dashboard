@@ -148,6 +148,45 @@
   color: rgba(255, 255, 255, 0.55);
 }
 
+.sidebar-toggles {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 10px;
+}
+
+.sidebar-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.sidebar-toggle-btn:hover {
+  background: var(--brand-navy-tint);
+  color: #ffffff;
+}
+
+.sidebar-toggle-btn.active {
+  background: var(--brand-navy-tint);
+  color: var(--accent-gold);
+}
+
+.sidebar-toggle-btn.active .nav-icon {
+  color: var(--accent-gold);
+}
+
 .status-dot-live {
   color: #3ddc84;
   flex-shrink: 0;
@@ -292,6 +331,17 @@
   .chart-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* "Desktop mode" toggle — forces the wide layout regardless of viewport
+   width. Higher specificity than the plain-class media-query rules above
+   so it wins even when a breakpoint matches. */
+.force-desktop .stat-grid {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.force-desktop .chart-grid {
+  grid-template-columns: 1fr 1fr;
 }
 
 .panel {

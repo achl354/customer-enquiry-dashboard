@@ -4,15 +4,39 @@ import Overview from './pages/Overview';
 import Queue from './pages/Queue';
 import Detail from './pages/Detail';
 import { getOverviewStats, getIngestStatus } from './api';
-import { IconGrid, IconInbox, IconAlertTriangle, IconLayers, IconDot } from './components/Icons';
+import {
+  IconGrid,
+  IconInbox,
+  IconAlertTriangle,
+  IconLayers,
+  IconDot,
+  IconSun,
+  IconMoon,
+  IconMonitor,
+} from './components/Icons';
 import logoFull from './assets/jdhg-logo-full-white.png';
 import './App.css';
 
 const STATS_REFRESH_MS = 60000;
+const THEME_KEY = 'enquiry-dashboard-theme';
+const FORCE_DESKTOP_KEY = 'enquiry-dashboard-force-desktop';
+const DESKTOP_VIEWPORT = 'width=1280';
+const DEFAULT_VIEWPORT = 'width=device-width, initial-scale=1.0';
+
+function systemPrefersDark() {
+  return typeof window !== 'undefined' && window.matchMedia
+    ? window.matchMedia('(prefers-color-scheme: dark)').matches
+    : false;
+}
 
 function App() {
   const [stats, setStats] = useState(null);
   const [ingestStatus, setIngestStatus] = useState(null);
+  const [theme, setTheme] = useState(() => {
+    const saved = localStorage.getItem(THEME_KEY);
+    return saved === 'light' || saved === 'dark' ? saved : systemPrefersDark() ? 'dark' : 'light';
+  });
+  const [forceDesktop, setForceDesktop] = useState(() => localStorage.getItem(FORCE_DESKTOP_KEY) === '1');
 
   useEffect(() => {
     const load = () => getOverviewStats().then(setStats).catch(() => {});
@@ -25,12 +49,25 @@ function App() {
     getIngestStatus().then(setIngestStatus).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', theme);
+    localStorage.setItem(THEME_KEY, theme);
+  }, [theme]);
+
+  useEffect(() => {
+    const viewport = document.querySelector('meta[name="viewport"]');
+    if (viewport) {
+      viewport.setAttribute('content', forceDesktop ? DESKTOP_VIEWPORT : DEFAULT_VIEWPORT);
+    }
+    localStorage.setItem(FORCE_DESKTOP_KEY, forceDesktop ? '1' : '0');
+  }, [forceDesktop]);
+
   const urgentCount = stats?.urgentOpen ?? null;
   const newCount = stats?.byStatus?.NEW ?? null;
 
   return (
     <BrowserRouter>
-      <div className="app-shell">
+      <div className={`app-shell${forceDesktop ? ' force-desktop' : ''}`}>
         <nav className="sidebar">
           <div className="brand">
             <img className="brand-logo" src={logoFull} alt="JD Healthcare Group" />
@@ -64,6 +101,26 @@ function App() {
           </div>
 
           <div className="sidebar-footer">
+            <div className="sidebar-toggles">
+              <button
+                type="button"
+                className="sidebar-toggle-btn"
+                aria-pressed={theme === 'dark'}
+                onClick={() => setTheme((t) => (t === 'dark' ? 'light' : 'dark'))}
+              >
+                {theme === 'dark' ? <IconMoon className="nav-icon" /> : <IconSun className="nav-icon" />}
+                <span>{theme === 'dark' ? 'Dark mode' : 'Light mode'}</span>
+              </button>
+              <button
+                type="button"
+                className={`sidebar-toggle-btn${forceDesktop ? ' active' : ''}`}
+                aria-pressed={forceDesktop}
+                onClick={() => setForceDesktop((v) => !v)}
+              >
+                <IconMonitor className="nav-icon" />
+                <span>Desktop mode</span>
+              </button>
+            </div>
             {ingestStatus && (
               <div className="sidebar-status-row">
                 <IconDot className={ingestStatus.graphConfigured ? 'status-dot-live' : 'status-dot-demo'} />

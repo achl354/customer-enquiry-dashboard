@@ -134,6 +134,7 @@ router.post('/:id/draft', async (req, res) => {
         senderName: existing.sender.name,
         senderEmail: existing.sender.email,
         recipients: existing.recipients,
+        assignedTo: existing.assignedTo,
       },
       { category: existing.category, extractedFields: existing.extractedFields },
       threadHistory

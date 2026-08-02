@@ -72,15 +72,24 @@ const insertStmt = db.prepare(`
   ON CONFLICT(graph_message_id) DO NOTHING
 `);
 
+const existsStmt = db.prepare('SELECT 1 FROM enquiries WHERE graph_message_id = ?');
+
 /**
  * Classify a raw email (AI when configured, rules otherwise/on failure) and
  * persist it as an enquiry. Idempotent on graph_message_id.
  * Returns the inserted row id, or null if it already existed.
  */
 async function ingestEmail(raw) {
+  const id = raw.graphMessageId || raw.internetMessageId || `${raw.senderEmail}-${raw.receivedAt}`;
+  // Checked before classifying, not just at insert time — a wider backfill
+  // window means poll cycles (and every restart, since lastPollAt resets)
+  // can re-fetch messages already ingested. Classification is the expensive
+  // part (a real API call when AI is configured), so this skips it entirely
+  // for anything already in the DB instead of only deduping at the INSERT.
+  if (existsStmt.get(id)) return null;
+
   const result = await classifyEmail(raw);
   const timestamp = nowIso();
-  const id = raw.graphMessageId || raw.internetMessageId || `${raw.senderEmail}-${raw.receivedAt}`;
 
   const info = insertStmt.run({
     id,

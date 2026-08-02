@@ -4,6 +4,18 @@ const GRAPH_SCOPE = 'https://graph.microsoft.com/.default';
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 const GRAPH_BATCH_URL = `${GRAPH_BASE}/$batch`;
 const BATCH_CHUNK_SIZE = 20; // Graph's max sub-requests per $batch call
+const PAGE_SIZE = 50;
+// Bounds a single poll's total fetch regardless of window size or how many
+// pages Graph has to offer — each message triggers classification (AI, if
+// configured), so an unbounded backfill on a mailbox with a big backlog
+// would mean an unbounded first API bill. Messages are fetched newest-first,
+// so hitting this cap means the *oldest* messages inside the backfill
+// window are the ones left uningested this cycle — lastPollAt still
+// advances to "now" afterwards (see poller.js), so they are NOT
+// automatically retried later. If this cap gets hit in practice, lower
+// BACKFILL_DAYS or raise MAX_MESSAGES_PER_POLL rather than relying on a
+// future poll.
+const MAX_MESSAGES_PER_POLL = Number(process.env.MAX_MESSAGES_PER_POLL) || 500;
 
 function isConfigured() {
   return !!(process.env.TENANT_ID && process.env.CLIENT_ID && process.env.CLIENT_SECRET && process.env.MAILBOX);
@@ -25,25 +37,50 @@ async function getAccessToken() {
   return result.accessToken;
 }
 
+// On the very first poll, there's no lastPollAt to resume from — instead of
+// the old behaviour (just the 50 most recent messages, full stop), backfill
+// this many days of history instead. Configurable since mailboxes vary a
+// lot in volume; only applies when sinceIso is null/undefined.
+function backfillWindowStart() {
+  const days = Number(process.env.BACKFILL_DAYS) || 30;
+  return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+}
+
 /**
- * Fetch messages from the configured mailbox's Inbox received after `sinceIso`,
- * newest first. Requires application permission Mail.Read (admin-consented),
- * ideally scoped to this mailbox via an Application Access Policy.
+ * Fetch messages from the configured mailbox's Inbox received after
+ * `sinceIso`, newest first, paginating through Graph's @odata.nextLink
+ * until exhausted or MAX_MESSAGES_PER_POLL is hit. Requires application
+ * permission Mail.Read (admin-consented), ideally scoped to this mailbox
+ * via an Application Access Policy.
  */
 async function fetchMessagesSince(sinceIso) {
   const token = await getAccessToken();
   const mailbox = encodeURIComponent(process.env.MAILBOX);
-  const filter = sinceIso ? `&$filter=receivedDateTime ge ${sinceIso}` : '';
+  const effectiveSince = sinceIso || backfillWindowStart();
   const select = '$select=id,internetMessageId,subject,bodyPreview,receivedDateTime,from,toRecipients,hasAttachments,importance,webLink,flag,conversationId,categories';
-  const url = `${GRAPH_BASE}/users/${mailbox}/mailFolders/inbox/messages?${select}${filter}&$orderby=receivedDateTime desc&$top=50`;
+  let url = `${GRAPH_BASE}/users/${mailbox}/mailFolders/inbox/messages?${select}&$filter=receivedDateTime ge ${effectiveSince}&$orderby=receivedDateTime desc&$top=${PAGE_SIZE}`;
 
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Graph API error ${res.status}: ${body}`);
+  const messages = [];
+  while (url && messages.length < MAX_MESSAGES_PER_POLL) {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Graph API error ${res.status}: ${body}`);
+    }
+    const data = await res.json();
+    messages.push(...(data.value || []));
+    url = data['@odata.nextLink'] || null;
   }
-  const data = await res.json();
-  return (data.value || []).map(toRawEmail);
+
+  if (url) {
+    console.warn(
+      `[graph-client] Hit MAX_MESSAGES_PER_POLL (${MAX_MESSAGES_PER_POLL}) with more pages still available — ` +
+      `the oldest messages in this window were left out this cycle. Lower BACKFILL_DAYS or raise ` +
+      `MAX_MESSAGES_PER_POLL if this recurs.`
+    );
+  }
+
+  return messages.slice(0, MAX_MESSAGES_PER_POLL).map(toRawEmail);
 }
 
 function toRawEmail(msg) {

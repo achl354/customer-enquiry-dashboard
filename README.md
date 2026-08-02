@@ -243,6 +243,32 @@ registration:
 Without these env vars set, the app runs fine in seed-only/demo mode — the
 poller silently no-ops.
 
+### Initial backfill
+
+The very first poll after connecting has no prior poll to resume from, so
+instead of only grabbing the 50 most recent inbox messages, it backfills
+history and paginates through as many pages as it takes to cover it:
+
+- **`BACKFILL_DAYS`** (default `30`) — how far back the first poll reaches.
+  Every poll after that is purely incremental (only messages received since
+  the last poll), so this only matters once, on connect.
+- **`MAX_MESSAGES_PER_POLL`** (default `500`) — a safety cap on any single
+  poll's total fetch, backfill or not. **Each message triggers
+  classification on ingest — a real Claude API call per email if
+  `ANTHROPIC_API_KEY` is set** — so this bounds the worst case instead of
+  one huge mailbox silently running up a large first bill. If this cap gets
+  hit (logged as a `[graph-client]` warning), the oldest messages inside the
+  backfill window are the ones left out that cycle and are **not**
+  automatically retried later — lower `BACKFILL_DAYS` or raise this instead.
+- Already-ingested messages (matched on Graph message ID) are skipped
+  *before* classification runs, not just at the database write — so
+  restarting the backend (which resets the in-memory poll cursor, re-running
+  the backfill window) re-fetches but does not re-classify anything already
+  in the database.
+- The backend log line distinguishes the two: `[graph-poller] Backfill: ...`
+  for that first poll, `[graph-poller] Polled: ...` for every incremental
+  one after.
+
 ## Status sync (Outlook categories & follow-up flags)
 
 The dashboard is an add-on triage layer, not the system of record — staff

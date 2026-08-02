@@ -78,6 +78,7 @@ async function syncReplyStatuses() {
 
 async function runPollOnce() {
   const sinceIso = lastPollAt;
+  const isBackfill = sinceIso == null;
   const messages = await graphClient.fetchMessagesSince(sinceIso);
 
   let ingested = 0;
@@ -91,6 +92,7 @@ async function runPollOnce() {
 
   lastPollAt = new Date().toISOString();
   return {
+    isBackfill,
     fetched: messages.length,
     ingested,
     flagsChecked: flagSync.checked,
@@ -116,8 +118,9 @@ function startScheduledPolling(cronExpression = process.env.POLL_CRON_EXPRESSION
   task = cron.schedule(cronExpression, async () => {
     try {
       const result = await runPollOnce();
+      const label = result.isBackfill ? 'Backfill' : 'Polled';
       console.log(
-        `[graph-poller] Polled: fetched=${result.fetched} ingested=${result.ingested} flagsChecked=${result.flagsChecked} flagsUpdated=${result.flagsUpdated} repliesChecked=${result.repliesChecked} repliesUpdated=${result.repliesUpdated}`
+        `[graph-poller] ${label}: fetched=${result.fetched} ingested=${result.ingested} flagsChecked=${result.flagsChecked} flagsUpdated=${result.flagsUpdated} repliesChecked=${result.repliesChecked} repliesUpdated=${result.repliesUpdated}`
       );
     } catch (err) {
       console.error('[graph-poller] Poll failed:', err.message);

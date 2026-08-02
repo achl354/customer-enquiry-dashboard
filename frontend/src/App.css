@@ -766,12 +766,19 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  gap: 20px;
+  flex-wrap: wrap;
+  gap: 12px 20px;
   margin-bottom: 20px;
 }
 
 .detail-header h2 {
   margin: 0 0 6px;
+}
+
+.detail-header-badges {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .detail-meta {
@@ -784,6 +791,12 @@
   grid-template-columns: 2fr 1fr;
   gap: 20px;
   align-items: start;
+}
+
+@media (max-width: 860px) {
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .email-body {
@@ -822,6 +835,7 @@
 .field-row {
   display: flex;
   justify-content: space-between;
+  gap: 12px;
   padding: 8px 0;
   border-bottom: 1px solid var(--gridline);
   font-size: 13px;
@@ -833,12 +847,17 @@
 
 .field-row .field-label {
   color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 .field-row .field-value {
   color: var(--text-primary);
   font-weight: 500;
   text-align: right;
+  /* A long unbroken value (email address, domain) is otherwise a flex item
+     with no break opportunity — same class of overflow bug as .main had. */
+  min-width: 0;
+  overflow-wrap: break-word;
 }
 
 .suggested-action {

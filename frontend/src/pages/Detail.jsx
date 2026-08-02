@@ -112,7 +112,7 @@ export default function Detail() {
             )}
           </div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div className="detail-header-badges">
           <CategoryPill category={enquiry.category} />
           <PriorityBadge priority={enquiry.priority} />
           <StatusBadge status={enquiry.status} />

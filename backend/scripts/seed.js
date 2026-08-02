@@ -16,12 +16,26 @@ const emails = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'seed-data'
  *   classifier again, re-spending real API cost for zero new data. `npm run
  *   seed` (direct CLI use) always forces, since that's someone deliberately
  *   asking to reset the demo data.
+ *
+ *   Checked against emails.length, not just "any rows at all": this table
+ *   is wiped (DELETE) before the insert loop below, which is sequential and
+ *   can take minutes with AI classification configured — if the process is
+ *   killed mid-loop (very plausible for a SEED_ON_BOOT run on Render's free
+ *   tier, whose whole premise is idle spin-down/restarts), a naive ">0"
+ *   check would see that partial count next boot and treat it as "already
+ *   fully seeded" forever, with no automatic way to recover. ">= expected
+ *   count" instead only skips once the seed genuinely completed (and still
+ *   correctly skips if live-polled data has since grown the table beyond
+ *   the seed file's own size).
  */
 async function main({ force = false } = {}) {
   const existingCount = db.prepare('SELECT COUNT(*) as c FROM enquiries').get().c;
-  if (existingCount > 0 && !force) {
-    console.log(`Skipping seed — ${existingCount} enquiries already present. Run "npm run seed" directly (which always reseeds) if you want to reset the demo data.`);
+  if (existingCount >= emails.length && !force) {
+    console.log(`Skipping seed — ${existingCount} enquiries already present (>= the ${emails.length} in seed data). Run "npm run seed" directly (which always reseeds) if you want to reset the demo data.`);
     return;
+  }
+  if (existingCount > 0 && existingCount < emails.length) {
+    console.log(`Found ${existingCount} enquiries, fewer than the ${emails.length} in seed data — treating as an incomplete previous seed and reseeding fully.`);
   }
 
   db.exec('DELETE FROM enquiries');

@@ -5,6 +5,17 @@ const graphClient = require('../graph/client');
 
 const router = express.Router();
 
+// A non-numeric but non-empty query value (e.g. ?limit=abc) previously
+// passed straight through as NaN, which better-sqlite3 rejects with a raw
+// "datatype mismatch" — an uncaught 500 for a simple malformed query
+// string. Falls back to undefined (repo.listEnquiries' own default) for
+// anything that isn't a genuine non-negative integer.
+function parseNonNegativeInt(value) {
+  if (value === undefined || value === '') return undefined;
+  const n = Number(value);
+  return Number.isInteger(n) && n >= 0 ? n : undefined;
+}
+
 router.get('/', (req, res) => {
   const { category, priority, status, search, sort, order, limit, offset } = req.query;
   const result = repo.listEnquiries({
@@ -14,8 +25,8 @@ router.get('/', (req, res) => {
     search: search || undefined,
     sort: sort || undefined,
     order: order || undefined,
-    limit: limit ? Number(limit) : undefined,
-    offset: offset ? Number(offset) : undefined,
+    limit: parseNonNegativeInt(limit),
+    offset: parseNonNegativeInt(offset),
   });
   res.json(result);
 });

@@ -1,5 +1,5 @@
 const Anthropic = require('@anthropic-ai/sdk');
-const { domainOf, orgNameForDomain } = require('../triage/classify');
+const { domainOf, orgNameForDomain, COMPANY_DOMAIN } = require('../triage/classify');
 
 // Validated against 5 edge cases (self-resolved feedback vs. genuine fault,
 // price-discrepancy vs. backorder, sales-lead override, formal complaint) —
@@ -56,16 +56,12 @@ const RESPONSE_SCHEMA = {
       required: ['poNumber', 'quoteNumber', 'facility', 'cityTag'],
       additionalProperties: false,
     },
-    reasoning: {
-      type: 'string',
-      description: 'One sentence on why you picked this category and priority.',
-    },
     suggestedAction: {
       type: 'string',
       description: 'A concrete next step for the customer service staff member handling this, grounded in how this team actually operates (see system prompt). Prefer a specific routing instruction over a generic one.',
     },
   },
-  required: ['category', 'priority', 'confidence', 'extractedFields', 'reasoning', 'suggestedAction'],
+  required: ['category', 'priority', 'confidence', 'extractedFields', 'suggestedAction'],
   additionalProperties: false,
 };
 
@@ -160,8 +156,7 @@ function buildUserContent(email) {
 /**
  * Classify a raw email using Claude, returning the same shape as the
  * rule-based classifier in ../triage/classify.js: { category, priority,
- * extractedFields, suggestedAction }, plus a confidence score and the
- * model's one-line reasoning.
+ * extractedFields, suggestedAction }, plus a confidence score.
  *
  * @param {object} email
  * @param {string} [model] - override the default model (e.g. for A/B testing)
@@ -192,14 +187,26 @@ async function classify(email, model = MODEL) {
   if (!textBlock) throw new Error('No text content in Claude response');
 
   const parsed = JSON.parse(textBlock.text);
+
+  // The json_schema output format already constrains category/priority to
+  // these enums server-side, but a raw API response is still worth checking
+  // rather than trusting blindly — the DB schema is a plain TEXT column with
+  // no CHECK constraint, so an unexpected value here would otherwise persist
+  // silently and just never match any of the UI's fixed filters.
+  if (!CATEGORIES.includes(parsed.category)) {
+    throw new Error(`Claude returned an unrecognized category: ${JSON.stringify(parsed.category)}`);
+  }
+  if (!PRIORITIES.includes(parsed.priority)) {
+    throw new Error(`Claude returned an unrecognized priority: ${JSON.stringify(parsed.priority)}`);
+  }
+
   const senderDomain = domainOf(email.senderEmail);
-  const isInternalSender = senderDomain === 'jdhealthcare.com.au';
+  const isInternalSender = senderDomain === COMPANY_DOMAIN;
 
   return {
     category: parsed.category,
     priority: parsed.priority,
     confidence: parsed.confidence,
-    reasoning: parsed.reasoning,
     extractedFields: {
       poNumber: parsed.extractedFields.poNumber,
       quoteNumber: parsed.extractedFields.quoteNumber,

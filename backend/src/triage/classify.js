@@ -151,18 +151,20 @@ function domainOf(email) {
 
 function orgNameForDomain(domain) {
   if (KNOWN_ORG_DOMAINS[domain]) return KNOWN_ORG_DOMAINS[domain];
+  // domain.split('.') is never [] (even '' splits to ['']), so there's
+  // always a parts[0] to title-case.
   const parts = domain.split('.');
-  if (parts.length === 0) return domain;
   return parts[0].charAt(0).toUpperCase() + parts[0].slice(1);
 }
 
+const PO_NUMBER_PATTERNS = [
+  /purchase order\s*(?:number)?\s*[:#]?\s*([A-Z0-9-]{5,20})/i,
+  /\bPO\s*(?:#|number|no\.?)?\s*[:#]?\s*([A-Z0-9-]{5,20})/i,
+  /\bPO[#:\s]([A-Z0-9-]{5,20})/i,
+];
+
 function extractPoNumber(text) {
-  const patterns = [
-    /purchase order\s*(?:number)?\s*[:#]?\s*([A-Z0-9-]{5,20})/i,
-    /\bPO\s*(?:#|number|no\.?)?\s*[:#]?\s*([A-Z0-9-]{5,20})/i,
-    /\bPO[#:\s]([A-Z0-9-]{5,20})/i,
-  ];
-  for (const re of patterns) {
+  for (const re of PO_NUMBER_PATTERNS) {
     const m = text.match(re);
     if (m && m[1] && !/^(BOX|THE|FOR)$/i.test(m[1])) return m[1].toUpperCase();
   }
@@ -452,4 +454,4 @@ function draftReplyFor(category, { poNumber, quoteNumber, facility, isSelfResolv
   }
 }
 
-module.exports = { classify, CATEGORIES, PRIORITIES, domainOf, orgNameForDomain };
+module.exports = { classify, CATEGORIES, PRIORITIES, domainOf, orgNameForDomain, COMPANY_DOMAIN, KNOWN_NOISE_SENDERS };

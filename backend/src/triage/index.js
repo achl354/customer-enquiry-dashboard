@@ -1,8 +1,5 @@
-const { classify: ruleBasedClassify, domainOf } = require('./classify');
+const { classify: ruleBasedClassify, domainOf, COMPANY_DOMAIN, KNOWN_NOISE_SENDERS } = require('./classify');
 const aiClassifier = require('../ai/classifier');
-
-const COMPANY_DOMAIN = 'jdhealthcare.com.au';
-const KNOWN_NOISE_SENDERS = ['quarantine@messaging.microsoft.com', 'learntocare.com.au'];
 
 // Obvious internal chatter and known noise senders are cheap to catch with
 // plain rules and never need a model call — save the AI classifier for

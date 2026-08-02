@@ -16,6 +16,11 @@ const PAGE_SIZE = 50;
 // BACKFILL_DAYS or raise MAX_MESSAGES_PER_POLL rather than relying on a
 // future poll.
 const MAX_MESSAGES_PER_POLL = Number(process.env.MAX_MESSAGES_PER_POLL) || 500;
+// Independent of MAX_MESSAGES_PER_POLL on purpose: that cap only stops the
+// loop once `messages` actually grows, so a degenerate Graph response
+// (an empty `value` page that still carries a non-null @odata.nextLink)
+// would otherwise loop forever, since neither exit condition is ever met.
+const MAX_PAGES = Math.ceil(MAX_MESSAGES_PER_POLL / PAGE_SIZE) + 10;
 
 function isConfigured() {
   return !!(process.env.TENANT_ID && process.env.CLIENT_ID && process.env.CLIENT_SECRET && process.env.MAILBOX);
@@ -61,7 +66,8 @@ async function fetchMessagesSince(sinceIso) {
   let url = `${GRAPH_BASE}/users/${mailbox}/mailFolders/inbox/messages?${select}&$filter=receivedDateTime ge ${effectiveSince}&$orderby=receivedDateTime desc&$top=${PAGE_SIZE}`;
 
   const messages = [];
-  while (url && messages.length < MAX_MESSAGES_PER_POLL) {
+  let pageCount = 0;
+  while (url && messages.length < MAX_MESSAGES_PER_POLL && pageCount < MAX_PAGES) {
     const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) {
       const body = await res.text();
@@ -70,9 +76,15 @@ async function fetchMessagesSince(sinceIso) {
     const data = await res.json();
     messages.push(...(data.value || []));
     url = data['@odata.nextLink'] || null;
+    pageCount += 1;
   }
 
-  if (url) {
+  if (pageCount >= MAX_PAGES && url) {
+    console.warn(
+      `[graph-client] Hit MAX_PAGES (${MAX_PAGES}) with more pages still available and only ${messages.length} ` +
+      `messages collected — Graph may be returning sparse/empty pages. Stopping this cycle rather than looping indefinitely.`
+    );
+  } else if (url) {
     console.warn(
       `[graph-client] Hit MAX_MESSAGES_PER_POLL (${MAX_MESSAGES_PER_POLL}) with more pages still available — ` +
       `the oldest messages in this window were left out this cycle. Lower BACKFILL_DAYS or raise ` +
@@ -108,6 +120,14 @@ function chunk(arr, size) {
   return out;
 }
 
+// A literal single quote inside an OData string literal must be doubled
+// (O'Brien -> 'O''Brien'), same idea as SQL string escaping — encodeURIComponent
+// alone doesn't touch "'" at all, so a conversationId containing one would
+// silently break/mis-filter this query instead of erroring loudly.
+function escapeODataString(value) {
+  return String(value).replace(/'/g, "''");
+}
+
 /**
  * Fetch the current Outlook follow-up flag AND category tags for a set of
  * messages (by Graph message id), via the $batch endpoint. The follow-up
@@ -124,6 +144,13 @@ function chunk(arr, size) {
  * Any OTHER non-200 (rate limit, transient 5xx, etc.) is skipped entirely
  * rather than treated as missing — those aren't evidence the message is
  * actually gone, just that this one lookup failed.
+ *
+ * A failed $batch call for one chunk doesn't abort the rest — with dozens
+ * of open enquiries split across several chunks, losing one chunk to a
+ * transient error shouldn't throw away the sync data already fetched for
+ * everything else. That chunk's messages are simply absent from the
+ * returned Map this cycle (same as an individual 404 vs. any other
+ * failure — no signal either way, not evidence of anything).
  */
 async function fetchMessageFlags(messageIds) {
   if (messageIds.length === 0) return new Map();
@@ -132,35 +159,39 @@ async function fetchMessageFlags(messageIds) {
   const results = new Map();
 
   for (const batch of chunk(messageIds, BATCH_CHUNK_SIZE)) {
-    const body = {
-      requests: batch.map((id, i) => ({
-        id: String(i),
-        method: 'GET',
-        url: `/users/${mailbox}/messages/${encodeURIComponent(id)}?$select=flag,categories`,
-      })),
-    };
-    const res = await fetch(GRAPH_BATCH_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const errBody = await res.text();
-      throw new Error(`Graph batch API error ${res.status}: ${errBody}`);
-    }
-    const data = await res.json();
-    for (const r of data.responses || []) {
-      const originalId = batch[Number(r.id)];
-      if (r.status === 200) {
-        results.set(originalId, {
-          flagStatus: r.body?.flag?.flagStatus || null,
-          categories: r.body?.categories || [],
-        });
-      } else if (r.status === 404) {
-        results.set(originalId, { missing: true });
+    try {
+      const body = {
+        requests: batch.map((id, i) => ({
+          id: String(i),
+          method: 'GET',
+          url: `/users/${mailbox}/messages/${encodeURIComponent(id)}?$select=flag,categories`,
+        })),
+      };
+      const res = await fetch(GRAPH_BATCH_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const errBody = await res.text();
+        throw new Error(`Graph batch API error ${res.status}: ${errBody}`);
       }
-      // Any other non-200 (rate limit, transient 5xx, etc.) is skipped
-      // silently — not confirmation the message is gone, just a failed check.
+      const data = await res.json();
+      for (const r of data.responses || []) {
+        const originalId = batch[Number(r.id)];
+        if (r.status === 200) {
+          results.set(originalId, {
+            flagStatus: r.body?.flag?.flagStatus || null,
+            categories: r.body?.categories || [],
+          });
+        } else if (r.status === 404) {
+          results.set(originalId, { missing: true });
+        }
+        // Any other non-200 (rate limit, transient 5xx, etc.) is skipped
+        // silently — not confirmation the message is gone, just a failed check.
+      }
+    } catch (err) {
+      console.error(`[graph-client] fetchMessageFlags: chunk of ${batch.length} failed, skipping it this cycle:`, err.message);
     }
   }
 
@@ -175,7 +206,9 @@ async function fetchMessageFlags(messageIds) {
  * to/cc address across matching Sent Items messages (used by the caller to
  * tell a customer-facing reply from a purely internal forward). A
  * conversationId that no longer resolves (e.g. very old/purged mail) is
- * skipped silently rather than failing the whole batch.
+ * skipped silently rather than failing the whole batch — and, same as
+ * fetchMessageFlags, a failed $batch call for one chunk doesn't lose the
+ * sync data already fetched for every other chunk.
  */
 async function fetchReplyStatus(items) {
   if (items.length === 0) return new Map();
@@ -184,32 +217,36 @@ async function fetchReplyStatus(items) {
   const results = new Map();
 
   for (const batch of chunk(items, BATCH_CHUNK_SIZE)) {
-    const body = {
-      requests: batch.map((item, i) => ({
-        id: String(i),
-        method: 'GET',
-        url: `/users/${mailbox}/mailFolders/sentitems/messages?$filter=conversationId eq '${encodeURIComponent(item.conversationId)}'&$select=toRecipients,ccRecipients,sentDateTime&$orderby=sentDateTime desc&$top=3`,
-      })),
-    };
-    const res = await fetch(GRAPH_BATCH_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const errBody = await res.text();
-      throw new Error(`Graph batch API error ${res.status}: ${errBody}`);
-    }
-    const data = await res.json();
-    for (const r of data.responses || []) {
-      const item = batch[Number(r.id)];
-      if (r.status !== 200) continue; // skip silently, e.g. conversationId no longer valid
-      const sentMessages = r.body?.value || [];
-      const recipients = sentMessages
-        .flatMap((m) => [...(m.toRecipients || []), ...(m.ccRecipients || [])])
-        .map((rec) => rec.emailAddress?.address)
-        .filter(Boolean);
-      results.set(item.graphMessageId, { hasReply: sentMessages.length > 0, recipients });
+    try {
+      const body = {
+        requests: batch.map((item, i) => ({
+          id: String(i),
+          method: 'GET',
+          url: `/users/${mailbox}/mailFolders/sentitems/messages?$filter=conversationId eq '${encodeURIComponent(escapeODataString(item.conversationId))}'&$select=toRecipients,ccRecipients,sentDateTime&$orderby=sentDateTime desc&$top=3`,
+        })),
+      };
+      const res = await fetch(GRAPH_BATCH_URL, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const errBody = await res.text();
+        throw new Error(`Graph batch API error ${res.status}: ${errBody}`);
+      }
+      const data = await res.json();
+      for (const r of data.responses || []) {
+        const item = batch[Number(r.id)];
+        if (r.status !== 200) continue; // skip silently, e.g. conversationId no longer valid
+        const sentMessages = r.body?.value || [];
+        const recipients = sentMessages
+          .flatMap((m) => [...(m.toRecipients || []), ...(m.ccRecipients || [])])
+          .map((rec) => rec.emailAddress?.address)
+          .filter(Boolean);
+        results.set(item.graphMessageId, { hasReply: sentMessages.length > 0, recipients });
+      }
+    } catch (err) {
+      console.error(`[graph-client] fetchReplyStatus: chunk of ${batch.length} failed, skipping it this cycle:`, err.message);
     }
   }
 
@@ -228,7 +265,7 @@ async function fetchConversationMessages(conversationId) {
   const token = await getAccessToken();
   const mailbox = encodeURIComponent(process.env.MAILBOX);
   const select = 'subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview';
-  const url = `${GRAPH_BASE}/users/${mailbox}/messages?$filter=conversationId eq '${encodeURIComponent(conversationId)}'&$select=${select}&$orderby=receivedDateTime asc&$top=25`;
+  const url = `${GRAPH_BASE}/users/${mailbox}/messages?$filter=conversationId eq '${encodeURIComponent(escapeODataString(conversationId))}'&$select=${select}&$orderby=receivedDateTime asc&$top=25`;
 
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) {

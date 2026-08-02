@@ -5,6 +5,14 @@ const { domainOf } = require('../triage/classify');
 
 let lastPollAt = null;
 let task = null;
+// Guards against a scheduled cron tick and a manual POST /api/ingest/run
+// (or two overlapping cron ticks, if a poll ever runs longer than the
+// interval) both calling runPollOnce() at once. ingestEmail() only skips
+// classification for messages already committed to the DB — while two
+// passes are both mid-flight for the same not-yet-ingested message, both
+// would pass that check and both would pay for classification. Concurrent
+// callers get the same in-flight promise instead of starting a second pass.
+let pollInFlight = null;
 
 function isGraphConfigured() {
   return graphClient.isConfigured();
@@ -86,31 +94,39 @@ async function syncReplyStatuses() {
   return { checked: open.length, updated };
 }
 
-async function runPollOnce() {
-  const sinceIso = lastPollAt;
-  const isBackfill = sinceIso == null;
-  const messages = await graphClient.fetchMessagesSince(sinceIso);
+function runPollOnce() {
+  if (pollInFlight) return pollInFlight;
 
-  let ingested = 0;
-  for (const raw of messages) {
-    const id = await repo.ingestEmail(raw);
-    if (id) ingested += 1;
-  }
+  pollInFlight = (async () => {
+    const sinceIso = lastPollAt;
+    const isBackfill = sinceIso == null;
+    const messages = await graphClient.fetchMessagesSince(sinceIso);
 
-  const flagSync = await syncFlagStatuses();
-  const replySync = await syncReplyStatuses();
+    let ingested = 0;
+    for (const raw of messages) {
+      const id = await repo.ingestEmail(raw);
+      if (id) ingested += 1;
+    }
 
-  lastPollAt = new Date().toISOString();
-  return {
-    isBackfill,
-    fetched: messages.length,
-    ingested,
-    flagsChecked: flagSync.checked,
-    flagsUpdated: flagSync.updated,
-    repliesChecked: replySync.checked,
-    repliesUpdated: replySync.updated,
-    polledAt: lastPollAt,
-  };
+    const flagSync = await syncFlagStatuses();
+    const replySync = await syncReplyStatuses();
+
+    lastPollAt = new Date().toISOString();
+    return {
+      isBackfill,
+      fetched: messages.length,
+      ingested,
+      flagsChecked: flagSync.checked,
+      flagsUpdated: flagSync.updated,
+      repliesChecked: replySync.checked,
+      repliesUpdated: replySync.updated,
+      polledAt: lastPollAt,
+    };
+  })().finally(() => {
+    pollInFlight = null;
+  });
+
+  return pollInFlight;
 }
 
 /**

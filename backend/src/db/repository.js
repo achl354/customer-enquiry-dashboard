@@ -296,81 +296,89 @@ function listOpenEnquiriesForReplySync() {
     }));
 }
 
+// overviewStats() runs on every dashboard load/poll of /api/stats/overview,
+// so — unlike one-off calls elsewhere — its statements are worth preparing
+// once at module load rather than re-parsing the same SQL text on every
+// call, same as insertStmt/existsStmt above. All static text (CLOSED_STATUS_SQL
+// is a hardcoded constant, the date math is SQLite's own datetime()/julianday(),
+// not JS-interpolated), so none of these need parameters.
+const last7DaysStmt = db.prepare("SELECT COUNT(*) as c FROM enquiries WHERE received_at >= datetime('now', '-7 days')");
+const prev7DaysStmt = db.prepare(
+  "SELECT COUNT(*) as c FROM enquiries WHERE received_at >= datetime('now', '-14 days') AND received_at < datetime('now', '-7 days')"
+);
+const byCategoryStmt = db.prepare('SELECT category, COUNT(*) as count FROM enquiries GROUP BY category');
+const byStatusStmt = db.prepare('SELECT status, COUNT(*) as count FROM enquiries GROUP BY status');
+const byPriorityStmt = db.prepare('SELECT priority, COUNT(*) as count FROM enquiries GROUP BY priority');
+const openCountStmt = db.prepare(`SELECT COUNT(*) as c FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL})`);
+const oldestOpenStmt = db.prepare(
+  `SELECT * FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) ORDER BY received_at ASC LIMIT 1`
+);
+const urgentOpenStmt = db.prepare(
+  `SELECT COUNT(*) as c FROM enquiries WHERE priority = 'URGENT' AND status NOT IN (${CLOSED_STATUS_SQL})`
+);
+const totalStmt = db.prepare('SELECT COUNT(*) as c FROM enquiries');
+const byClassifiedByStmt = db.prepare('SELECT classified_by, COUNT(*) as count FROM enquiries GROUP BY classified_by');
+const lowConfidenceCountStmt = db.prepare("SELECT COUNT(*) as c FROM enquiries WHERE classified_by = 'ai' AND confidence < 0.5");
+// AVG()/COUNT() in SQL instead of pulling every RESOLVED row into Node just
+// to reduce it to two numbers — this cost was growing unbounded as RESOLVED
+// enquiries accumulate over the dashboard's lifetime.
+const resolutionStatsStmt = db.prepare(
+  "SELECT AVG((julianday(updated_at) - julianday(received_at)) * 24) as avgHours, COUNT(*) as count FROM enquiries WHERE status = 'RESOLVED'"
+);
+const byFacilityStmt = db.prepare(
+  "SELECT facility, COUNT(*) as count FROM enquiries WHERE facility IS NOT NULL AND facility != '' GROUP BY facility ORDER BY count DESC LIMIT 10"
+);
+const agingRowsStmt = db.prepare(
+  `SELECT
+     CASE
+       WHEN (julianday('now') - julianday(received_at)) * 24 < 24 THEN '0-24h'
+       WHEN (julianday('now') - julianday(received_at)) < 3 THEN '1-3d'
+       WHEN (julianday('now') - julianday(received_at)) < 7 THEN '3-7d'
+       ELSE '7d+'
+     END as bucket,
+     COUNT(*) as count
+   FROM enquiries
+   WHERE status NOT IN (${CLOSED_STATUS_SQL})
+   GROUP BY bucket`
+);
+const byAssigneeStmt = db.prepare(
+  `SELECT assigned_to, COUNT(*) as count FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) AND assigned_to IS NOT NULL AND assigned_to != '' GROUP BY assigned_to ORDER BY count DESC`
+);
+const unassignedOpenStmt = db.prepare(
+  `SELECT COUNT(*) as c FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) AND (assigned_to IS NULL OR assigned_to = '')`
+);
+const dailyRowsStmt = db.prepare(
+  "SELECT date(received_at) as day, COUNT(*) as count FROM enquiries WHERE received_at >= datetime('now', '-30 days') GROUP BY day"
+);
+
 function overviewStats() {
   // Real week-over-week volume comparison (by received_at), not a fabricated
   // trend — used for the "Total enquiries" delta indicator on Overview.
-  const last7Days = db
-    .prepare("SELECT COUNT(*) as c FROM enquiries WHERE received_at >= datetime('now', '-7 days')")
-    .get().c;
-  const prev7Days = db
-    .prepare(
-      "SELECT COUNT(*) as c FROM enquiries WHERE received_at >= datetime('now', '-14 days') AND received_at < datetime('now', '-7 days')"
-    )
-    .get().c;
+  const last7Days = last7DaysStmt.get().c;
+  const prev7Days = prev7DaysStmt.get().c;
 
-  const byCategory = db.prepare('SELECT category, COUNT(*) as count FROM enquiries GROUP BY category').all();
-  const byStatus = db.prepare('SELECT status, COUNT(*) as count FROM enquiries GROUP BY status').all();
-  const byPriority = db.prepare('SELECT priority, COUNT(*) as count FROM enquiries GROUP BY priority').all();
+  const byCategory = byCategoryStmt.all();
+  const byStatus = byStatusStmt.all();
+  const byPriority = byPriorityStmt.all();
 
-  const openCount = db
-    .prepare(`SELECT COUNT(*) as c FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL})`)
-    .get().c;
+  const openCount = openCountStmt.get().c;
+  const oldestOpen = oldestOpenStmt.get();
+  const urgentOpen = urgentOpenStmt.get().c;
+  const total = totalStmt.get().c;
+  const byClassifiedBy = byClassifiedByStmt.all();
+  const lowConfidenceCount = lowConfidenceCountStmt.get().c;
 
-  const oldestOpen = db
-    .prepare(
-      `SELECT * FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) ORDER BY received_at ASC LIMIT 1`
-    )
-    .get();
-
-  const urgentOpen = db
-    .prepare(
-      `SELECT COUNT(*) as c FROM enquiries WHERE priority = 'URGENT' AND status NOT IN (${CLOSED_STATUS_SQL})`
-    )
-    .get().c;
-
-  const total = db.prepare('SELECT COUNT(*) as c FROM enquiries').get().c;
-
-  const byClassifiedBy = db.prepare('SELECT classified_by, COUNT(*) as count FROM enquiries GROUP BY classified_by').all();
-
-  const lowConfidenceCount = db
-    .prepare("SELECT COUNT(*) as c FROM enquiries WHERE classified_by = 'ai' AND confidence < 0.5")
-    .get().c;
-
-  const resolvedWithDuration = db
-    .prepare(
-      "SELECT (julianday(updated_at) - julianday(received_at)) * 24 as hours FROM enquiries WHERE status = 'RESOLVED'"
-    )
-    .all();
-  const avgResolutionHours = resolvedWithDuration.length
-    ? resolvedWithDuration.reduce((sum, r) => sum + r.hours, 0) / resolvedWithDuration.length
-    : null;
+  const resolutionStats = resolutionStatsStmt.get();
+  const avgResolutionHours = resolutionStats.count > 0 ? resolutionStats.avgHours : null;
 
   // Top facilities/organisations by volume — nothing in the UI previously
   // surfaced which customers actually generate the most enquiries.
-  const byFacility = db
-    .prepare(
-      "SELECT facility, COUNT(*) as count FROM enquiries WHERE facility IS NOT NULL AND facility != '' GROUP BY facility ORDER BY count DESC LIMIT 10"
-    )
-    .all();
+  const byFacility = byFacilityStmt.all();
 
   // Aging distribution of open enquiries. A single "oldest open" item
   // doesn't show how many are piling up — this does, in the same buckets
   // a team lead would think in (still fresh / due for a check-in / overdue).
-  const agingRows = db
-    .prepare(
-      `SELECT
-         CASE
-           WHEN (julianday('now') - julianday(received_at)) * 24 < 24 THEN '0-24h'
-           WHEN (julianday('now') - julianday(received_at)) < 3 THEN '1-3d'
-           WHEN (julianday('now') - julianday(received_at)) < 7 THEN '3-7d'
-           ELSE '7d+'
-         END as bucket,
-         COUNT(*) as count
-       FROM enquiries
-       WHERE status NOT IN (${CLOSED_STATUS_SQL})
-       GROUP BY bucket`
-    )
-    .all();
+  const agingRows = agingRowsStmt.all();
   const agingByBucket = Object.fromEntries(agingRows.map((r) => [r.bucket, r.count]));
   const agingBuckets = ['0-24h', '1-3d', '3-7d', '7d+'].map((bucket) => ({
     bucket,
@@ -380,24 +388,12 @@ function overviewStats() {
   // Open workload per assignee — "Team overview" previously showed nothing
   // about the team itself. Unassigned is reported separately since it's not
   // a person.
-  const byAssignee = db
-    .prepare(
-      `SELECT assigned_to, COUNT(*) as count FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) AND assigned_to IS NOT NULL AND assigned_to != '' GROUP BY assigned_to ORDER BY count DESC`
-    )
-    .all();
-  const unassignedOpen = db
-    .prepare(
-      `SELECT COUNT(*) as c FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) AND (assigned_to IS NULL OR assigned_to = '')`
-    )
-    .get().c;
+  const byAssignee = byAssigneeStmt.all();
+  const unassignedOpen = unassignedOpenStmt.get().c;
 
   // Daily volume for the last 30 days, zero-filled — a single week-over-week
   // delta hides spikes/seasonality (e.g. a burst of PO notices on one day).
-  const dailyRows = db
-    .prepare(
-      "SELECT date(received_at) as day, COUNT(*) as count FROM enquiries WHERE received_at >= datetime('now', '-30 days') GROUP BY day"
-    )
-    .all();
+  const dailyRows = dailyRowsStmt.all();
   const dailyByDate = Object.fromEntries(dailyRows.map((r) => [r.day, r.count]));
   const dailyVolume = [];
   for (let i = 29; i >= 0; i -= 1) {
@@ -420,7 +416,7 @@ function overviewStats() {
     dailyVolume,
     oldestOpen: rowToEnquiry(oldestOpen),
     avgResolutionHours,
-    resolvedCount: resolvedWithDuration.length,
+    resolvedCount: resolutionStats.count,
     byClassifiedBy: Object.fromEntries(byClassifiedBy.map((r) => [r.classified_by, r.count])),
     lowConfidenceCount,
     last7Days,

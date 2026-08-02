@@ -498,6 +498,19 @@
   height: 28px;
 }
 
+/* The 160px/44px fixed columns are a hard floor (~224px including gaps)
+   that a real phone's content width can't clear even with the sidebar
+   already collapsed to its icon rail — same overflow bug class as the
+   sidebar/detail-grid fixes elsewhere, just not caught until a bar chart
+   was checked on a real device. .bar-label already ellipsizes, so
+   shrinking its column just truncates sooner rather than breaking. */
+@media (max-width: 480px) {
+  .bar-row {
+    grid-template-columns: 90px 1fr 32px;
+    gap: 6px;
+  }
+}
+
 .bar-row .bar-label {
   font-size: 13px;
   color: var(--text-secondary);

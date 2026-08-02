@@ -97,7 +97,11 @@ const COMPLAINT_SIGNALS = ['customer complaint', 'discontinue use', 'lot number'
 // existing bucket) but needs distinct suggestedAction/draftReply wording —
 // nothing was ever shipped or returned, so "confirm the returned item was
 // received, process the credit note" doesn't apply. See isCancellation below.
-const CANCELLATION_SIGNALS = ['cancellation', 'unable to process'];
+// Narrower than a bare 'unable to process' on purpose — that also matches
+// "unable to process your payment" (an invoice/billing issue, not a
+// cancellation), which would wrongly outrank INVOICE_BILLING below since
+// this list is checked as part of RETURNS_CREDIT ahead of it.
+const CANCELLATION_SIGNALS = ['cancellation', 'unable to process this order', 'unable to process the order', 'unable to process your order'];
 
 const RETURNS_SIGNALS = ['goods return', 'credit note', 'return label', 'item order in error', 'returned items', 'restocking fee', ...CANCELLATION_SIGNALS];
 
@@ -217,7 +221,15 @@ function classify(email) {
     // otherwise get swallowed by the QUOTE_PRICING check below).
     category = 'PRODUCT_ENQUIRY';
   } else if (
-    includesAny(text, ['not inflating', 'not turning', 'not charging', 'malfunction', 'not working', 'stopped working', 'fault', 'faulty', 'broken', 'digs into', 'does not fit', "doesn't fit", 'failure', 'leaking', 'problem with', 'repair', 'damage', 'damaged'])
+    // 'problem with', bare 'repair', and bare 'damage'/'damaged' were here
+    // too — all generic enough to fire on RETURNS_CREDIT ("item arrived
+    // damaged, please credit"), INVOICE_BILLING ("problem with invoice..."),
+    // and QUOTE_PRICING ("quote for a repair kit") emails checked further
+    // down this chain, since this branch is checked first. 'repair' is
+    // narrowed to actual-repair phrasing rather than dropped outright —
+    // real Sent Items examples ("update on this repair", "contact for
+    // repair of our equipment") needed it.
+    includesAny(text, ['not inflating', 'not turning', 'not charging', 'malfunction', 'not working', 'stopped working', 'fault', 'faulty', 'broken', 'digs into', 'does not fit', "doesn't fit", 'failure', 'leaking', 'repair of', 'this repair', 'needs repair', 'require repair', 'requires repair'])
   ) {
     category = 'EQUIPMENT_FAULT';
   } else if (includesAny(text, ['backorder', 'back order', 'container shipment'])) {
@@ -233,8 +245,7 @@ function classify(email) {
     // reference elsewhere in the subject shouldn't outrank a flat decline.
     category = 'PRODUCT_ENQUIRY';
   } else if (
-    includesAny(text, ['purchase order', 'po#', 'eta', 'dispatch', 'despatch', 'delivery date', 'need by date', 'awaiting payment', 'on hold']) ||
-    Object.keys(KNOWN_ORG_DOMAINS).some((d) => senderDomain === d || senderDomain.endsWith(`.${d}`))
+    includesAny(text, ['purchase order', 'po#', 'eta', 'dispatch', 'despatch', 'delivery date', 'need by date', 'awaiting payment', 'on hold'])
   ) {
     category = 'PO_ETA_REQUEST';
   } else if (includesAny(text, ['quote', 'pricing', 'special pricing', 'price list', 'quotation'])) {
@@ -253,6 +264,16 @@ function classify(email) {
   } else if (KNOWN_SUPPLIER_DOMAINS.some((d) => senderDomain === d)) {
     category = 'SUPPLIER_VENDOR';
   } else if (!isInternalSender) {
+    // KNOWN_ORG_DOMAINS used to also force PO_ETA_REQUEST here for any
+    // known health-org sender with no other signal at all — removed. It
+    // was a majority-class guess ("most mail from these domains is a PO/ETA
+    // chase"), but it fired even for a plain factual question ("can you
+    // confirm the mattress dimensions?") with zero PO/dispatch language,
+    // and for genuinely unrelated administrative mail (a supplier
+    // compliance-report reminder, a contract award notice) — both of which
+    // then got a nonsensical "confirm stock/dispatch status" suggestedAction.
+    // A known org domain still labels `facility` correctly (orgNameForDomain
+    // below) — it just no longer overrides the category itself.
     category = 'PRODUCT_ENQUIRY';
   }
 

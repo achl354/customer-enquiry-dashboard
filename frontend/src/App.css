@@ -6,7 +6,7 @@
 .sidebar {
   width: 248px;
   flex-shrink: 0;
-  background: var(--brand-navy-deep);
+  background: linear-gradient(160deg, var(--brand-navy-deep) 0%, var(--brand-navy) 100%);
   padding: 20px 12px;
   display: flex;
   flex-direction: column;

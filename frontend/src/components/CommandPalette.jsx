@@ -17,23 +17,33 @@ export function CommandPalette({ open, onClose }) {
   useEffect(() => {
     if (open) {
       setQuery('');
+      setResults([]);
       setActiveIndex(0);
       // Wait a tick for the overlay to mount before focusing.
-      setTimeout(() => inputRef.current?.focus(), 0);
+      const focusTimeout = setTimeout(() => inputRef.current?.focus(), 0);
+      return () => clearTimeout(focusTimeout);
     }
+    return undefined;
   }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;
+    const controller = new AbortController();
     const timeout = setTimeout(() => {
-      listEnquiries({ search: query, sort: 'receivedAt', order: 'desc', limit: RESULT_LIMIT })
+      listEnquiries({ search: query, sort: 'receivedAt', order: 'desc', limit: RESULT_LIMIT }, { signal: controller.signal })
         .then((res) => {
           setResults(res.items);
           setActiveIndex(0);
         })
-        .catch(() => setResults([]));
+        .catch((e) => {
+          if (e.name === 'AbortError') return; // a newer keystroke superseded this search
+          setResults([]);
+        });
     }, DEBOUNCE_MS);
-    return () => clearTimeout(timeout);
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, [query, open]);
 
   useEffect(() => {
@@ -44,7 +54,7 @@ export function CommandPalette({ open, onClose }) {
         onClose();
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setActiveIndex((i) => Math.min(i + 1, results.length - 1));
+        setActiveIndex((i) => Math.min(i + 1, Math.max(0, results.length - 1)));
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         setActiveIndex((i) => Math.max(i - 1, 0));

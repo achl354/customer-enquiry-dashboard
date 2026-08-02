@@ -41,17 +41,29 @@ export default function Queue() {
 
   useEffect(() => {
     setLoading(true);
+    const controller = new AbortController();
     const timeout = setTimeout(() => {
-      listEnquiries({ ...filters, sort, order, limit: PAGE_SIZE, offset: page * PAGE_SIZE })
+      listEnquiries({ ...filters, sort, order, limit: PAGE_SIZE, offset: page * PAGE_SIZE }, { signal: controller.signal })
         .then((res) => {
           setItems(res.items);
           setTotal(res.total);
           setError(null);
+          setLoading(false);
         })
-        .catch((e) => setError(e.message))
-        .finally(() => setLoading(false));
+        .catch((e) => {
+          // Aborted on purpose (a newer filter/sort/page change fired before
+          // this one resolved) — not a real error. Also don't touch loading
+          // here: the newer request already set it true, and this stale one
+          // finishing shouldn't flip it back off underneath it.
+          if (e.name === 'AbortError') return;
+          setError(e.message);
+          setLoading(false);
+        });
     }, 200);
-    return () => clearTimeout(timeout);
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
   }, [filters, sort, order, page]);
 
   const update = (key) => (e) => {
@@ -142,6 +154,17 @@ export default function Queue() {
                   key={e.id}
                   className={`row-link${e.priority === 'URGENT' ? ' row-urgent' : ''}`}
                   onClick={() => navigate(`/enquiries/${e.id}`)}
+                  onKeyDown={(ev) => {
+                    // A <tr> isn't natively focusable/activatable, so without
+                    // this a keyboard-only user has no way to open an
+                    // enquiry from this table at all — Tab just skips it.
+                    if (ev.key === 'Enter' || ev.key === ' ') {
+                      ev.preventDefault();
+                      navigate(`/enquiries/${e.id}`);
+                    }
+                  }}
+                  tabIndex={0}
+                  role="link"
                 >
                   <td>{new Date(e.receivedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</td>
                   <td>{e.extractedFields.facility || e.sender.name || e.sender.email}</td>
@@ -164,8 +187,8 @@ export default function Queue() {
           {total > PAGE_SIZE && (
             <div className="pagination">
               <span>{pageStart}–{pageEnd} of {total}</span>
-              <button disabled={page === 0} onClick={() => setPage((p) => p - 1)}>← Prev</button>
-              <button disabled={pageEnd >= total} onClick={() => setPage((p) => p + 1)}>Next →</button>
+              <button type="button" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>← Prev</button>
+              <button type="button" disabled={pageEnd >= total} onClick={() => setPage((p) => p + 1)}>Next →</button>
             </div>
           )}
         </>

@@ -17,6 +17,10 @@ function formatDate(d) {
  */
 export function TrendChart({ data }) {
   const [hoverIndex, setHoverIndex] = useState(null);
+  // Matches Sparkline/BarList's own empty-data guard — data[0]/data[length-1]
+  // below would otherwise throw for a brand-new mailbox with zero history.
+  if (!data || data.length === 0) return null;
+
   const plotW = WIDTH - PAD_LEFT - PAD_RIGHT;
   const plotH = HEIGHT - PAD_TOP - PAD_BOTTOM;
   const max = Math.max(...data.map((d) => d.count), 1);

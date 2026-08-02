@@ -723,6 +723,12 @@
   background: var(--page-plane);
 }
 
+.enquiry-table tr.row-link:focus-visible {
+  background: var(--page-plane);
+  outline: 2px solid var(--series-1);
+  outline-offset: -2px;
+}
+
 .enquiry-table .subject-cell {
   color: var(--text-primary);
   font-weight: 500;
@@ -748,13 +754,6 @@
   font-size: 12px;
   font-weight: 600;
   white-space: nowrap;
-}
-
-.badge-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  flex-shrink: 0;
 }
 
 .badge.priority-urgent { color: var(--status-critical); background: color-mix(in srgb, var(--status-critical) 12%, transparent); }

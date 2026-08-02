@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getOverviewStats } from '../api';
 import { BarList } from '../components/BarList';
@@ -8,6 +8,12 @@ import { OverviewSkeleton } from '../components/Skeletons';
 import { IconLayers, IconInbox, IconAlertTriangle, IconClock, IconSparkle, IconEye } from '../components/Icons';
 import { categoryLabel, statusLabel } from '../taxonomy';
 import { useCountUp } from '../hooks/useCountUp';
+
+// Matches App.jsx's sidebar poll interval — the two independently fetched
+// the same stats with no shared cadence, so this page's own numbers could
+// silently drift out of sync with the sidebar's Urgent/New counts (visible
+// until the user navigated away and back) instead of just refreshing together.
+const STATS_REFRESH_MS = 60000;
 
 const STATUS_COLORS = {
   NEW: 'var(--series-1)',
@@ -29,12 +35,17 @@ const AGING_COLORS = {
 // — showing "14.3h" from 2 data points reads as precise when it isn't.
 const MIN_RESOLVED_SAMPLE = 5;
 
+const STATUS_ORDER = ['NEW', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER', 'RESOLVED', 'IGNORED', 'REMOVED'];
+
 export default function Overview() {
   const [stats, setStats] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    getOverviewStats().then(setStats).catch((e) => setError(e.message));
+    const load = () => getOverviewStats().then(setStats).catch((e) => setError(e.message));
+    load();
+    const interval = setInterval(load, STATS_REFRESH_MS);
+    return () => clearInterval(interval);
   }, []);
 
   // Hooks must run unconditionally, so these all sit above the
@@ -46,26 +57,54 @@ export default function Overview() {
   const aiClassifiedDisplay = useCountUp(stats?.byClassifiedBy?.ai ?? null);
   const lowConfidenceDisplay = useCountUp(stats?.lowConfidenceCount ?? null);
 
+  // Memoized since these are pure functions of `stats` alone, but Overview
+  // re-renders on every useCountUp animation tick (up to 6 concurrent
+  // animations x ~42 frames over 700ms right after stats load) — without
+  // this, all five array transforms below re-ran on every one of those
+  // frames for no reason.
+  const categoryData = useMemo(() => {
+    if (!stats) return [];
+    return Object.entries(stats.byCategory)
+      .map(([key, value]) => ({ key, value, label: categoryLabel(key) }))
+      .sort((a, b) => b.value - a.value);
+  }, [stats]);
+
+  const statusData = useMemo(() => {
+    if (!stats) return [];
+    return STATUS_ORDER.filter((s) => stats.byStatus[s]).map((key) => ({
+      key,
+      value: stats.byStatus[key],
+      label: statusLabel(key),
+    }));
+  }, [stats]);
+
+  const facilityData = useMemo(() => {
+    if (!stats) return [];
+    return stats.byFacility.map((f) => ({ key: f.facility, value: f.count, label: f.facility }));
+  }, [stats]);
+
+  const agingData = useMemo(() => {
+    if (!stats) return [];
+    return stats.agingBuckets.map((b) => ({ key: b.bucket, value: b.count, label: b.bucket }));
+  }, [stats]);
+
+  const workloadData = useMemo(() => {
+    if (!stats) return [];
+    return [
+      ...stats.byAssignee.map((a) => ({ key: a.assignedTo, value: a.count, label: a.assignedTo })),
+      ...(stats.unassignedOpen > 0 ? [{ key: '__unassigned', value: stats.unassignedOpen, label: 'Unassigned' }] : []),
+    ].sort((a, b) => b.value - a.value);
+  }, [stats]);
+
+  const sparklineValues = useMemo(() => {
+    // Real data only — the daily volume series is the one metric on this
+    // page with genuine history, so it's the only tile that gets a sparkline.
+    if (!stats) return [];
+    return stats.dailyVolume.slice(-14).map((d) => d.count);
+  }, [stats]);
+
   if (error) return <div className="error-state">Failed to load stats: {error}</div>;
   if (!stats) return <OverviewSkeleton />;
-
-  const categoryData = Object.entries(stats.byCategory)
-    .map(([key, value]) => ({ key, value, label: categoryLabel(key) }))
-    .sort((a, b) => b.value - a.value);
-
-  const statusOrder = ['NEW', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER', 'RESOLVED', 'IGNORED', 'REMOVED'];
-  const statusData = statusOrder
-    .filter((s) => stats.byStatus[s])
-    .map((key) => ({ key, value: stats.byStatus[key], label: statusLabel(key) }));
-
-  const facilityData = stats.byFacility.map((f) => ({ key: f.facility, value: f.count, label: f.facility }));
-
-  const agingData = stats.agingBuckets.map((b) => ({ key: b.bucket, value: b.count, label: b.bucket }));
-
-  const workloadData = [
-    ...stats.byAssignee.map((a) => ({ key: a.assignedTo, value: a.count, label: a.assignedTo })),
-    ...(stats.unassignedOpen > 0 ? [{ key: '__unassigned', value: stats.unassignedOpen, label: 'Unassigned' }] : []),
-  ].sort((a, b) => b.value - a.value);
 
   const weeklyDelta = stats.last7Days - stats.prev7Days;
   const trendDirection = weeklyDelta > 0 ? 'up' : weeklyDelta < 0 ? 'down' : 'flat';
@@ -75,10 +114,6 @@ export default function Overview() {
       : `${weeklyDelta > 0 ? '+' : ''}${weeklyDelta} vs last week`;
 
   const hasEnoughResolved = stats.resolvedCount >= MIN_RESOLVED_SAMPLE;
-
-  // Real data only — the daily volume series is the one metric on this page
-  // with genuine history, so it's the only tile that gets a sparkline.
-  const sparklineValues = stats.dailyVolume.slice(-14).map((d) => d.count);
 
   return (
     <div>

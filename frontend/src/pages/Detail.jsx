@@ -30,13 +30,21 @@ export default function Detail() {
     setThreadError(null);
     setCopied(false);
 
-    getEnquiry(id)
+    // Same instance-reuse issue means a slow response for the *previous*
+    // id could otherwise land after a faster response for the current one
+    // and overwrite it — cancel it instead of racing.
+    const controller = new AbortController();
+    getEnquiry(id, { signal: controller.signal })
       .then((e) => {
         setEnquiry(e);
         setAssigneeDraft(e.assignedTo || '');
         setDraftText(e.draftReply || '');
       })
-      .catch((e) => setError(e.message));
+      .catch((e) => {
+        if (e.name === 'AbortError') return;
+        setError(e.message);
+      });
+    return () => controller.abort();
   }, [id]);
 
   async function handleCopyDraft() {

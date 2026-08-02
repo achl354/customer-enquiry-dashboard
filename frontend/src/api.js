@@ -16,15 +16,20 @@ async function request(path, options = {}) {
   return res.json();
 }
 
-export function listEnquiries(params = {}) {
+// `options` (e.g. { signal }) is forwarded straight to fetch — lets a caller
+// that re-fetches on every keystroke/param change (search, pagination, the
+// enquiry id in the URL) cancel a stale in-flight request instead of racing
+// it against a newer one and possibly rendering whichever happens to
+// resolve last.
+export function listEnquiries(params = {}, options = {}) {
   const query = new URLSearchParams(
     Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== ''))
   ).toString();
-  return request(`/enquiries${query ? `?${query}` : ''}`);
+  return request(`/enquiries${query ? `?${query}` : ''}`, options);
 }
 
-export function getEnquiry(id) {
-  return request(`/enquiries/${encodeURIComponent(id)}`);
+export function getEnquiry(id, options = {}) {
+  return request(`/enquiries/${encodeURIComponent(id)}`, options);
 }
 
 export function updateEnquiry(id, updates) {

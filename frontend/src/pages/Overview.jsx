@@ -192,14 +192,16 @@ export default function Overview() {
         </div>
       )}
 
-      <div className="panel">
-        <h3>Open enquiries by age</h3>
-        <BarList data={agingData} colorFor={(key) => AGING_COLORS[key]} />
-      </div>
+      <div className="chart-grid">
+        <div className="panel">
+          <h3>Open enquiries by age</h3>
+          <BarList data={agingData} colorFor={(key) => AGING_COLORS[key]} />
+        </div>
 
-      <div className="panel">
-        <h3>Volume, last 30 days</h3>
-        <TrendChart data={stats.dailyVolume} />
+        <div className="panel">
+          <h3>Volume, last 30 days</h3>
+          <TrendChart data={stats.dailyVolume} />
+        </div>
       </div>
 
       <div className="chart-grid">

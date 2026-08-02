@@ -247,14 +247,14 @@
      page's layout viewport on a narrow screen (the sidebar then renders
      "short" because the browser zooms the entire layout out to fit). */
   min-width: 0;
-  padding: 32px 40px;
+  padding: clamp(16px, 3vh, 32px) 40px;
 }
 
 .main h2 {
   font-size: 21px;
   font-weight: 700;
   letter-spacing: -0.01em;
-  margin: 0 0 22px;
+  margin: 0 0 clamp(10px, 2vh, 22px);
   text-wrap: balance;
 }
 
@@ -264,8 +264,8 @@
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 14px;
-  margin-bottom: 28px;
+  gap: clamp(8px, 1.2vh, 14px);
+  margin-bottom: clamp(12px, 2vh, 28px);
 }
 
 @media (max-width: 900px) {
@@ -332,7 +332,7 @@
   border: 1px solid var(--border);
   border-radius: var(--card-radius);
   box-shadow: var(--card-shadow);
-  padding: 18px 20px;
+  padding: clamp(10px, 1.6vh, 18px) 20px;
   position: relative;
   overflow: hidden;
   transition: box-shadow 0.15s ease, transform 0.15s ease;
@@ -359,7 +359,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: clamp(4px, 0.9vh, 10px);
 }
 
 .stat-tile-header .stat-icon {
@@ -451,8 +451,11 @@
 /* Bar list chart */
 .chart-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  /* auto-fit rather than a fixed 2 columns — on wide screens (now that
+     .main isn't capped at 1320px) this lets panels flow up to 4-across
+     instead of always stacking into extra rows purely to fill height. */
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: clamp(10px, 1.4vh, 20px);
 }
 
 @media (max-width: 860px) {
@@ -469,7 +472,7 @@
 }
 
 .force-desktop .chart-grid {
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
 .panel {
@@ -477,15 +480,15 @@
   border: 1px solid var(--border);
   border-radius: var(--card-radius);
   box-shadow: var(--card-shadow);
-  padding: 22px;
-  margin-bottom: 20px;
+  padding: clamp(12px, 1.8vh, 22px);
+  margin-bottom: clamp(10px, 1.4vh, 20px);
 }
 
 .panel h3 {
   font-size: 13.5px;
   font-weight: 700;
   letter-spacing: 0.01em;
-  margin: 0 0 18px;
+  margin: 0 0 clamp(8px, 1.2vh, 18px);
   color: var(--text-primary);
 }
 
@@ -494,7 +497,7 @@
   grid-template-columns: 160px 1fr 44px;
   align-items: center;
   gap: 10px;
-  height: 28px;
+  height: clamp(20px, 2.2vh, 28px);
 }
 
 /* The 160px/44px fixed columns are a hard floor (~224px including gaps)
@@ -545,7 +548,7 @@
 
 .trend-chart svg {
   width: 100%;
-  height: 140px;
+  height: clamp(90px, 12vh, 140px);
   display: block;
   cursor: crosshair;
 }

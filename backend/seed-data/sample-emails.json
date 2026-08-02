@@ -542,7 +542,7 @@
       "Alexis.Temizyuz@health.nsw.gov.au"
     ],
     "subject": "Re: Purchase Order 55076349 - Questions regarding Battery on PO",
-    "bodyPreview": "OFFICIAL: Sensitive \u2013 Personal. Hi Paula, The serial number on the chair is: 96298-4. Kind Regards, Linda Woods, Environmental Services Manager, Cowra, NSW 2794, Western NSW Local Health District.",
+    "bodyPreview": "OFFICIAL: Sensitive – Personal. Hi Paula, The serial number on the chair is: 96298-4. Kind Regards, Linda Woods, Environmental Services Manager, Cowra, NSW 2794, Western NSW Local Health District.",
     "hasAttachments": false,
     "importance": "normal",
     "webLink": "https://outlook.office365.com/owa/?ItemID=example34"
@@ -631,7 +631,7 @@
     "recipients": [
       "sales@jdhealthcare.com.au"
     ],
-    "subject": "Outstanding Purchase Orders \u2013 SRHH ETA Update Request",
+    "subject": "Outstanding Purchase Orders – SRHH ETA Update Request",
     "bodyPreview": "Hi, We are currently reviewing outstanding purchase orders for Royal Hobart Hospital, Tasmanian Health Service and would appreciate an update on the items listed below.",
     "hasAttachments": false,
     "importance": "normal",
@@ -1433,7 +1433,7 @@
       "sales@jdhealthcare.com.au"
     ],
     "subject": "Service Assist Heli Trolley Enquiry (Ref - SV2607010088/Kishor)",
-    "bodyPreview": "Hi there, Can we please have the part number, price and availability for the locking mechanism and straps for the JD Healthcare Heli Trolley \u2013 Pictures attached. Kind Regards, Amanda Newling, Aftermarket Spare Parts Co-Ordinator, Arjo Australia.",
+    "bodyPreview": "Hi there, Can we please have the part number, price and availability for the locking mechanism and straps for the JD Healthcare Heli Trolley – Pictures attached. Kind Regards, Amanda Newling, Aftermarket Spare Parts Co-Ordinator, Arjo Australia.",
     "hasAttachments": true,
     "importance": "normal",
     "webLink": "https://outlook.office365.com/owa/?ItemID=example91"
@@ -1449,7 +1449,7 @@
       "Sumit.Relan@health.nsw.gov.au"
     ],
     "subject": "Action Required: Submission of Quarterly Supplier Report - Q4 FY26",
-    "bodyPreview": "Dear Supplier, Good Afternoon! I hope all is well with you upon receiving this email. This email is a friendly reminder regarding the Q4 FY26 Supplier Reporting Period (1 April 2026 \u2013 30 June 2026). As a contracted supplier with NSW Health, you are required to complete and return the report.",
+    "bodyPreview": "Dear Supplier, Good Afternoon! I hope all is well with you upon receiving this email. This email is a friendly reminder regarding the Q4 FY26 Supplier Reporting Period (1 April 2026 – 30 June 2026). As a contracted supplier with NSW Health, you are required to complete and return the report.",
     "hasAttachments": true,
     "importance": "normal",
     "webLink": "https://outlook.office365.com/owa/?ItemID=example92"
@@ -1483,7 +1483,7 @@
       "sales@jdhealthcare.com.au"
     ],
     "subject": "Award - Standing Offer Agreement for Clinical Furniture  HSSP-HC25_CF923",
-    "bodyPreview": "OFFICIAL: Sensitive \u2013 NSW Government. Dear Supplier, Please find attached the award documentation for Standing Offer Agreement for Clinical Furniture HSSP-HC25_CF923. Regards, Lamya Yaqo, Category Officer, Strategic Procurement.",
+    "bodyPreview": "OFFICIAL: Sensitive – NSW Government. Dear Supplier, Please find attached the award documentation for Standing Offer Agreement for Clinical Furniture HSSP-HC25_CF923. Regards, Lamya Yaqo, Category Officer, Strategic Procurement.",
     "hasAttachments": true,
     "importance": "normal",
     "webLink": "https://outlook.office365.com/owa/?ItemID=example94"
@@ -1788,5 +1788,545 @@
     "hasAttachments": false,
     "importance": "normal",
     "webLink": "https://outlook.office365.com/owa/?ItemID=example113"
+  },
+  {
+    "graphMessageId": "seed-114",
+    "internetMessageId": "<po-114@gateway2.messagexchange.com>",
+    "receivedAt": "2026-07-04T08:12:00.000Z",
+    "senderName": null,
+    "senderEmail": "HSNSW-PurchaseOrders@gateway2.messagexchange.com",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "New transactions.buy Purchase Order 55201147 from NSW Health",
+    "bodyPreview": "A new purchase order has been issued. PO Number: 55201147. Please confirm receipt and expected dispatch date.",
+    "hasAttachments": true,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example114"
+  },
+  {
+    "graphMessageId": "seed-115",
+    "internetMessageId": "<po-eta-115@health.wa.gov.au>",
+    "receivedAt": "2026-07-04T23:40:00.000Z",
+    "senderName": "Priya Nair",
+    "senderEmail": "priya.nair@health.wa.gov.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "ETA on PO 88213 - still outstanding",
+    "bodyPreview": "Hi team, following up again on PO 88213, this is now the second time I've had to chase this. Can someone please confirm dispatch or provide a revised delivery date today?",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example115"
+  },
+  {
+    "graphMessageId": "seed-116",
+    "internetMessageId": "<msquarantine-116@messaging.microsoft.com>",
+    "receivedAt": "2026-07-05T09:02:00.000Z",
+    "senderName": null,
+    "senderEmail": "quarantine@messaging.microsoft.com",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "Microsoft 365 security: You have messages in quarantine",
+    "bodyPreview": "Review These Messages. 2 messages are being held for you to review. Review them within 30 days of the received date by going to the Quarantine page in the Security Center.",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example116"
+  },
+  {
+    "graphMessageId": "seed-117",
+    "internetMessageId": "<quote-117@barwonhealth.org.au>",
+    "receivedAt": "2026-07-05T22:15:00.000Z",
+    "senderName": "Daniel Kirk",
+    "senderEmail": "d.kirk@barwonhealth.org.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "Quote request - HoverMatt and sling compatibility",
+    "bodyPreview": "Could you please send an updated quote for 4x HoverMatt units, and confirm sling compatibility with our existing ceiling hoists?",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example117"
+  },
+  {
+    "graphMessageId": "seed-118",
+    "internetMessageId": "<int-118@jdhealthcare.com.au>",
+    "receivedAt": "2026-07-06T05:30:00.000Z",
+    "senderName": "Scott Borresen",
+    "senderEmail": "scott.borresen@jdhealthcare.com.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "RE: July pricing sheet - Bendigo Health",
+    "bodyPreview": "Cc'ing sales@ so we have a record - Bendigo's updated contract pricing is now locked in for the next 12 months, sheet attached.",
+    "hasAttachments": true,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example118"
+  },
+  {
+    "graphMessageId": "seed-119",
+    "internetMessageId": "<po-119@gateway2.messagexchange.com>",
+    "receivedAt": "2026-07-06T21:05:00.000Z",
+    "senderName": null,
+    "senderEmail": "HSNSW-PurchaseOrders@gateway2.messagexchange.com",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "New transactions.buy Purchase Order 55201893 from NSW Health",
+    "bodyPreview": "A new purchase order has been issued. PO Number: 55201893. Please confirm receipt and expected dispatch date.",
+    "hasAttachments": true,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example119"
+  },
+  {
+    "graphMessageId": "seed-120",
+    "internetMessageId": "<web-120@wpforms.com>",
+    "receivedAt": "2026-07-07T04:20:00.000Z",
+    "senderName": null,
+    "senderEmail": "noreply@wpforms.com",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "[MELBOURNE] Enquiry from JD Healthcare Group Website",
+    "bodyPreview": "Name: Karen Wu. Facility: St Vincent’s Private. Message: Hi, we are looking for a bariatric wheelchair for a new client, could someone reach out with options and pricing?",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example120"
+  },
+  {
+    "graphMessageId": "seed-121",
+    "internetMessageId": "<eq-fault-121@ramsayhealth.com.au>",
+    "receivedAt": "2026-07-07T23:48:00.000Z",
+    "senderName": "Michelle Ford",
+    "senderEmail": "michelle.ford@ramsayhealth.com.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "Hoist not charging - urgent",
+    "bodyPreview": "One of our ceiling hoists has stopped charging overnight and the battery indicator is flashing red. We have a patient who relies on this daily, can someone advise urgently?",
+    "hasAttachments": false,
+    "importance": "high",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example121"
+  },
+  {
+    "graphMessageId": "seed-122",
+    "internetMessageId": "<inv-122@health.nsw.gov.au>",
+    "receivedAt": "2026-07-08T06:10:00.000Z",
+    "senderName": "Hitendra Singh",
+    "senderEmail": "hitendra.singh@health.nsw.gov.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "RE: INV59012 - invoice does not match PO",
+    "bodyPreview": "The amount on INV59012 is higher than what was on the original PO 55187221. Can you please review and reissue if this was billed incorrectly?",
+    "hasAttachments": true,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example122"
+  },
+  {
+    "graphMessageId": "seed-123",
+    "internetMessageId": "<po-123@gateway2.messagexchange.com>",
+    "receivedAt": "2026-07-08T20:55:00.000Z",
+    "senderName": null,
+    "senderEmail": "HSNSW-PurchaseOrders@gateway2.messagexchange.com",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "New transactions.buy Purchase Order 55202410 from NSW Health",
+    "bodyPreview": "A new purchase order has been issued. PO Number: 55202410. Please confirm receipt and expected dispatch date.",
+    "hasAttachments": true,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example123"
+  },
+  {
+    "graphMessageId": "seed-124",
+    "internetMessageId": "<courier-124@steadfastlogistics.com.au>",
+    "receivedAt": "2026-07-09T03:35:00.000Z",
+    "senderName": null,
+    "senderEmail": "operations@steadfastlogistics.com.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "RE: Consignment MS70120044 (STH000006103) - redelivery required",
+    "bodyPreview": "Attempted delivery today but no one was available onsite. Please confirm a redelivery window or alternate pickup arrangement for this consignment.",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example124"
+  },
+  {
+    "graphMessageId": "seed-125",
+    "internetMessageId": "<po-eta-125@health.sa.gov.au>",
+    "receivedAt": "2026-07-09T22:00:00.000Z",
+    "senderName": "Fatima Al-Amin",
+    "senderEmail": "fatima.alamin@health.sa.gov.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "PO 88340 - ON HOLD - price discrepancy on line 2",
+    "bodyPreview": "Our system has this PO on hold due to a price discrepancy on line 2 (quoted $412 vs PO $389). Please advise an amended PO with the corrected pricing so we can release it.",
+    "hasAttachments": true,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example125"
+  },
+  {
+    "graphMessageId": "seed-126",
+    "internetMessageId": "<int-126@jdhealthcare.com.au>",
+    "receivedAt": "2026-07-10T05:45:00.000Z",
+    "senderName": "Jamia Vendivel",
+    "senderEmail": "jamia.vendivel@jdhealthcare.com.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "RE: Territory rep coverage - Perth region",
+    "bodyPreview": "Just flagging internally that Perth enquiries should route to the new rep starting this week while we update the coverage list.",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example126"
+  },
+  {
+    "graphMessageId": "seed-127",
+    "internetMessageId": "<po-127@gateway2.messagexchange.com>",
+    "receivedAt": "2026-07-10T21:18:00.000Z",
+    "senderName": null,
+    "senderEmail": "HSNSW-PurchaseOrders@gateway2.messagexchange.com",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "New transactions.buy Purchase Order 55203015 from NSW Health",
+    "bodyPreview": "A new purchase order has been issued. PO Number: 55203015. Please confirm receipt and expected dispatch date.",
+    "hasAttachments": true,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example127"
+  },
+  {
+    "graphMessageId": "seed-128",
+    "internetMessageId": "<parts-128@directhealthcaregroup.com.au>",
+    "receivedAt": "2026-07-11T04:52:00.000Z",
+    "senderName": "Grace Iheme",
+    "senderEmail": "grace.iheme@directhealthcaregroup.com.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "Part's information - replacement brake cable",
+    "bodyPreview": "We need a replacement brake cable for one of our transport chairs (model TC-220). Could you confirm the part code, price, and whether it is in stock?",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example128"
+  },
+  {
+    "graphMessageId": "seed-129",
+    "internetMessageId": "<supplier-129@arjo.com>",
+    "receivedAt": "2026-07-11T23:10:00.000Z",
+    "senderName": "Liam Foster",
+    "senderEmail": "liam.foster@arjo.com",
+    "recipients": [
+      "purchasing@jdhealthcare.com.au"
+    ],
+    "subject": "RE: Stock availability - hoist slings Q3",
+    "bodyPreview": "Confirming our Q3 stock allocation for the sling range you ordered - expect the first shipment to be ready for dispatch to you within 2 weeks.",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example129"
+  },
+  {
+    "graphMessageId": "seed-130",
+    "internetMessageId": "<backorder-130@gateway2.messagexchange.com>",
+    "receivedAt": "2026-07-12T07:00:00.000Z",
+    "senderName": null,
+    "senderEmail": "HSNSW-PurchaseOrders@gateway2.messagexchange.com",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "Back order notice - PO 55198821 past due",
+    "bodyPreview": "This is an automated notice that PO 55198821 is now past its original due date and remains on back order. Please provide an updated ETA.",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example130"
+  },
+  {
+    "graphMessageId": "seed-131",
+    "internetMessageId": "<po-eta-131@act.gov.au>",
+    "receivedAt": "2026-07-12T21:40:00.000Z",
+    "senderName": "Robert Cheng",
+    "senderEmail": "robert.cheng@act.gov.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "PO ACT-4471 - dispatch confirmation please",
+    "bodyPreview": "Could you confirm whether PO ACT-4471 has been dispatched yet? We have a patient discharge scheduled and need the equipment onsite by Friday.",
+    "hasAttachments": false,
+    "importance": "high",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example131"
+  },
+  {
+    "graphMessageId": "seed-132",
+    "internetMessageId": "<complaint-132@calvarycare.org.au>",
+    "receivedAt": "2026-07-13T05:25:00.000Z",
+    "senderName": "Anne Blackwood",
+    "senderEmail": "anne.blackwood@calvarycare.org.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "Customer complaint - adverse event report",
+    "bodyPreview": "We need to log a formal customer complaint regarding an adverse event with one of your mobility aids. Product code MA-118, LOT 22417, expiry 03/2027. Please advise next steps.",
+    "hasAttachments": true,
+    "importance": "high",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example132"
+  },
+  {
+    "graphMessageId": "seed-133",
+    "internetMessageId": "<po-133@gateway2.messagexchange.com>",
+    "receivedAt": "2026-07-14T08:05:00.000Z",
+    "senderName": null,
+    "senderEmail": "HSNSW-PurchaseOrders@gateway2.messagexchange.com",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "New transactions.buy Purchase Order 55204288 from NSW Health",
+    "bodyPreview": "A new purchase order has been issued. PO Number: 55204288. Please confirm receipt and expected dispatch date.",
+    "hasAttachments": true,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example133"
+  },
+  {
+    "graphMessageId": "seed-134",
+    "internetMessageId": "<returns-134@bendigohealth.org.au>",
+    "receivedAt": "2026-07-15T02:30:00.000Z",
+    "senderName": "Tom Nguyen",
+    "senderEmail": "tom.nguyen@bendigohealth.org.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "Goods return - item ordered in error",
+    "bodyPreview": "We ordered the wrong size commode by mistake (PO 55176544). Requesting to return the unopened unit and process a credit note.",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example134"
+  },
+  {
+    "graphMessageId": "seed-135",
+    "internetMessageId": "<training-135@learntocare.com.au>",
+    "receivedAt": "2026-07-16T00:15:00.000Z",
+    "senderName": null,
+    "senderEmail": "silcourses@learntocare.com.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "New Module 6B Training Courses now live in our course library",
+    "bodyPreview": "New manual handling training modules are now available in your course library. Log in to view the updated content.",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example135"
+  },
+  {
+    "graphMessageId": "seed-136",
+    "internetMessageId": "<po-136@gateway2.messagexchange.com>",
+    "receivedAt": "2026-07-16T21:50:00.000Z",
+    "senderName": null,
+    "senderEmail": "HSNSW-PurchaseOrders@gateway2.messagexchange.com",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "New transactions.buy Purchase Order 55204901 from NSW Health",
+    "bodyPreview": "A new purchase order has been issued. PO Number: 55204901. Please confirm receipt and expected dispatch date.",
+    "hasAttachments": true,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example136"
+  },
+  {
+    "graphMessageId": "seed-137",
+    "internetMessageId": "<eq-feedback-137@healthecare.com.au>",
+    "receivedAt": "2026-07-17T04:40:00.000Z",
+    "senderName": "Bernie Osei",
+    "senderEmail": "bernie.osei@healthecare.com.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "Re: Squeaky wheelchair wheel - all sorted",
+    "bodyPreview": "Just a quick note to say I've sorted the squeaky wheel out myself with a bit of lubricant, no need to send a technician out after all. Thanks for the quick response earlier.",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example137"
+  },
+  {
+    "graphMessageId": "seed-138",
+    "internetMessageId": "<order-conf-138@bigcommerce.com>",
+    "receivedAt": "2026-07-18T09:00:00.000Z",
+    "senderName": "JD Healthcare Group Store",
+    "senderEmail": "notifications@bigcommerce.com",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "New Order (#100482) - Online Store",
+    "bodyPreview": "You have received a new order #100482 from Kylie Marsh totalling $284.00. Payment status: Paid. Order is ready for processing.",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example138"
+  },
+  {
+    "graphMessageId": "seed-139",
+    "internetMessageId": "<po-eta-139@gh.org.au>",
+    "receivedAt": "2026-07-19T22:20:00.000Z",
+    "senderName": "Carla Dimitriou",
+    "senderEmail": "carla.dimitriou@gh.org.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "PO GH-2291 - any update on delivery?",
+    "bodyPreview": "Hi, just checking in on PO GH-2291, it's been a couple of weeks now. Could you please confirm dispatch status or an updated ETA?",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example139"
+  },
+  {
+    "graphMessageId": "seed-140",
+    "internetMessageId": "<po-140@gateway2.messagexchange.com>",
+    "receivedAt": "2026-07-20T07:35:00.000Z",
+    "senderName": null,
+    "senderEmail": "HSNSW-PurchaseOrders@gateway2.messagexchange.com",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "New transactions.buy Purchase Order 55205733 from NSW Health",
+    "bodyPreview": "A new purchase order has been issued. PO Number: 55205733. Please confirm receipt and expected dispatch date.",
+    "hasAttachments": true,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example140"
+  },
+  {
+    "graphMessageId": "seed-141",
+    "internetMessageId": "<web-trial-141@wpforms.com>",
+    "receivedAt": "2026-07-21T05:10:00.000Z",
+    "senderName": null,
+    "senderEmail": "noreply@wpforms.com",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "Trial request - Sydney region",
+    "bodyPreview": "Name: Owen Baxter. Facility: Concord Repatriation Hospital. Message: Would like to trial the pressure care mattress range before committing to a full order, is this possible?",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example141"
+  },
+  {
+    "graphMessageId": "seed-142",
+    "internetMessageId": "<quote-142@iconcore.com.au>",
+    "receivedAt": "2026-07-22T23:55:00.000Z",
+    "senderName": "Nadia Farouk",
+    "senderEmail": "nadia.farouk@iconcore.com.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "Re: Quote follow-up - shower commodes x12",
+    "bodyPreview": "Just following up on the quote sent last week for 12 shower commodes - are you able to confirm pricing is still current and lead time for delivery?",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example142"
+  },
+  {
+    "graphMessageId": "seed-143",
+    "internetMessageId": "<po-143@gateway2.messagexchange.com>",
+    "receivedAt": "2026-07-24T06:45:00.000Z",
+    "senderName": null,
+    "senderEmail": "HSNSW-PurchaseOrders@gateway2.messagexchange.com",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "New transactions.buy Purchase Order 55206410 from NSW Health",
+    "bodyPreview": "A new purchase order has been issued. PO Number: 55206410. Please confirm receipt and expected dispatch date.",
+    "hasAttachments": true,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example143"
+  },
+  {
+    "graphMessageId": "seed-144",
+    "internetMessageId": "<int-144@jdhealthcare.com.au>",
+    "receivedAt": "2026-07-25T04:00:00.000Z",
+    "senderName": "Graham Lade",
+    "senderEmail": "graham.lade@jdhealthcare.com.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "RE: Adelaide complaint follow-up - internal notes",
+    "bodyPreview": "Adding internal notes on the Adelaide complaint case for the file before we close it out - technical review confirmed no fault with the unit itself.",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example144"
+  },
+  {
+    "graphMessageId": "seed-145",
+    "internetMessageId": "<po-eta-145@vinestherapy.com.au>",
+    "receivedAt": "2026-07-27T21:30:00.000Z",
+    "senderName": "Ellie Marsh",
+    "senderEmail": "ellie.marsh@vinestherapy.com.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "PO VT-3387 ETA request",
+    "bodyPreview": "Could you please advise on the ETA for PO VT-3387? We need to schedule a home visit around delivery of this equipment.",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example145"
+  },
+  {
+    "graphMessageId": "seed-146",
+    "internetMessageId": "<courier-146@packsend.com.au>",
+    "receivedAt": "2026-07-29T02:50:00.000Z",
+    "senderName": null,
+    "senderEmail": "support@packsend.com.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "Proof of delivery - Consignment PS884201",
+    "bodyPreview": "Attached is the signed proof of delivery for consignment PS884201, delivered this morning at 8:42am.",
+    "hasAttachments": true,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example146"
+  },
+  {
+    "graphMessageId": "seed-147",
+    "internetMessageId": "<po-147@gateway2.messagexchange.com>",
+    "receivedAt": "2026-07-30T23:12:00.000Z",
+    "senderName": null,
+    "senderEmail": "HSNSW-PurchaseOrders@gateway2.messagexchange.com",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "New transactions.buy Purchase Order 55207122 from NSW Health",
+    "bodyPreview": "A new purchase order has been issued. PO Number: 55207122. Please confirm receipt and expected dispatch date.",
+    "hasAttachments": true,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example147"
+  },
+  {
+    "graphMessageId": "seed-148",
+    "internetMessageId": "<eq-fault-148@stgeorgehospital.com.au>",
+    "receivedAt": "2026-08-01T05:20:00.000Z",
+    "senderName": "Vivian Ashworth",
+    "senderEmail": "vivian.ashworth@stgeorgehospital.com.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "Equipment fault - patient lift not turning",
+    "bodyPreview": "One of our patient lifts has stopped turning properly on the base, making it unsafe to use. Could someone advise on repair or replacement options as soon as possible?",
+    "hasAttachments": false,
+    "importance": "high",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example148"
+  },
+  {
+    "graphMessageId": "seed-149",
+    "internetMessageId": "<po-eta-149@healthscope.com.au>",
+    "receivedAt": "2026-08-02T01:05:00.000Z",
+    "senderName": "Dev Patel",
+    "senderEmail": "dev.patel@healthscope.com.au",
+    "recipients": [
+      "sales@jdhealthcare.com.au"
+    ],
+    "subject": "PO 55207550 - dispatch status",
+    "bodyPreview": "Could you please confirm whether PO 55207550 has been dispatched, and provide a tracking reference if available?",
+    "hasAttachments": false,
+    "importance": "normal",
+    "webLink": "https://outlook.office365.com/owa/?ItemID=example149"
   }
 ]

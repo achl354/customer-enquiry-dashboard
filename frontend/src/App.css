@@ -754,6 +754,7 @@
 .badge.status-waiting_on_customer { color: var(--text-secondary); background: var(--gridline); }
 .badge.status-resolved { color: var(--success-text); background: color-mix(in srgb, var(--status-good) 14%, transparent); }
 .badge.status-ignored { color: var(--text-muted); background: var(--gridline); }
+.badge.status-removed { color: var(--accent-gold); background: color-mix(in srgb, var(--accent-gold) 14%, transparent); }
 
 .category-pill {
   font-size: 12px;

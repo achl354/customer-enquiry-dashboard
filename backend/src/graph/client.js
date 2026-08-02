@@ -117,9 +117,13 @@ function chunk(arr, size) {
  * Categories are a separate, currently-unused Outlook feature in this
  * mailbox, so they're a cleaner channel for an explicit "Resolved"/"No
  * Action Needed" tag without depending on a habit the team doesn't have.
- * Returns a Map of messageId -> { flagStatus, categories }, silently
- * skipping any message that no longer resolves (e.g. moved/deleted) rather
- * than failing the whole batch.
+ * Returns a Map of messageId -> { flagStatus, categories } on success, or
+ * { missing: true } for a confirmed 404 (message deleted, or moved
+ * somewhere its ID no longer resolves — observed cause in this mailbox:
+ * storage-quota cleanup deleting mail after it's been acted on, not before).
+ * Any OTHER non-200 (rate limit, transient 5xx, etc.) is skipped entirely
+ * rather than treated as missing — those aren't evidence the message is
+ * actually gone, just that this one lookup failed.
  */
 async function fetchMessageFlags(messageIds) {
   if (messageIds.length === 0) return new Map();
@@ -152,8 +156,11 @@ async function fetchMessageFlags(messageIds) {
           flagStatus: r.body?.flag?.flagStatus || null,
           categories: r.body?.categories || [],
         });
+      } else if (r.status === 404) {
+        results.set(originalId, { missing: true });
       }
-      // Non-200 (e.g. 404 for a moved/deleted message) is skipped silently.
+      // Any other non-200 (rate limit, transient 5xx, etc.) is skipped
+      // silently — not confirmation the message is gone, just a failed check.
     }
   }
 

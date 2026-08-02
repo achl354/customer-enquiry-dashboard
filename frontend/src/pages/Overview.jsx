@@ -15,6 +15,7 @@ const STATUS_COLORS = {
   WAITING_ON_CUSTOMER: 'var(--text-muted)',
   RESOLVED: 'var(--status-good)',
   IGNORED: 'var(--text-muted)',
+  REMOVED: 'var(--accent-gold)',
 };
 
 const AGING_COLORS = {
@@ -52,7 +53,7 @@ export default function Overview() {
     .map(([key, value]) => ({ key, value, label: categoryLabel(key) }))
     .sort((a, b) => b.value - a.value);
 
-  const statusOrder = ['NEW', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER', 'RESOLVED', 'IGNORED'];
+  const statusOrder = ['NEW', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER', 'RESOLVED', 'IGNORED', 'REMOVED'];
   const statusData = statusOrder
     .filter((s) => stats.byStatus[s])
     .map((key) => ({ key, value: stats.byStatus[key], label: statusLabel(key) }));

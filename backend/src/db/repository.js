@@ -38,11 +38,30 @@ function statusForCategories(categories) {
   return null;
 }
 
+// A confirmed 404 looking up the message itself (not just "no flag/category
+// data") means it's gone from the mailbox entirely — moved somewhere its ID
+// no longer resolves, or deleted. Distinct from RESOLVED (see CLOSED_STATUSES
+// above): this is an inference from disappearance, not an explicit "done"
+// from staff, so it stays visually and functionally separate.
+function statusForMissingMessage(confirmedMissing) {
+  return confirmedMissing ? 'REMOVED' : null;
+}
+
 // Status "rank" so reply-detection (and anything similar) can only ever
 // advance an enquiry forward, never undo a status staff already set
 // themselves — e.g. a stale/old reply shouldn't demote a RESOLVED enquiry
 // back to WAITING_ON_CUSTOMER.
-const STATUS_RANK = { NEW: 0, IN_PROGRESS: 1, WAITING_ON_CUSTOMER: 2, RESOLVED: 3, IGNORED: 3 };
+const STATUS_RANK = { NEW: 0, IN_PROGRESS: 1, WAITING_ON_CUSTOMER: 2, RESOLVED: 3, IGNORED: 3, REMOVED: 3 };
+
+// Terminal statuses — excluded from every "open enquiries" query below.
+// REMOVED means the message was deleted/purged from the mailbox (observed
+// cause: storage quota cleanup) before ever getting an explicit Resolved/No
+// Action Needed category — see statusForMissingMessage below. It's kept
+// distinct from RESOLVED rather than folded into it, since deletion doesn't
+// confirm the enquiry was actually handled, just that nothing further will
+// ever be seen for it.
+const CLOSED_STATUSES = ['RESOLVED', 'IGNORED', 'REMOVED'];
+const CLOSED_STATUS_SQL = CLOSED_STATUSES.map((s) => `'${s}'`).join(', ');
 
 // A reply/forward was found in Sent Items for this enquiry's conversation.
 // Customer-facing (recipients overlap the original external sender's domain)
@@ -252,7 +271,7 @@ function updateEnquiry(id, updates) {
 function listOpenEnquiriesForFlagSync() {
   return db
     .prepare(
-      "SELECT id, graph_message_id, status FROM enquiries WHERE status NOT IN ('RESOLVED', 'IGNORED') AND graph_message_id IS NOT NULL"
+      `SELECT id, graph_message_id, status FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) AND graph_message_id IS NOT NULL`
     )
     .all()
     .map((r) => ({ id: r.id, graphMessageId: r.graph_message_id, status: r.status }));
@@ -265,7 +284,7 @@ function listOpenEnquiriesForFlagSync() {
 function listOpenEnquiriesForReplySync() {
   return db
     .prepare(
-      "SELECT id, graph_message_id, conversation_id, status, sender_domain FROM enquiries WHERE status NOT IN ('RESOLVED', 'IGNORED') AND graph_message_id IS NOT NULL AND conversation_id IS NOT NULL"
+      `SELECT id, graph_message_id, conversation_id, status, sender_domain FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) AND graph_message_id IS NOT NULL AND conversation_id IS NOT NULL`
     )
     .all()
     .map((r) => ({
@@ -294,18 +313,18 @@ function overviewStats() {
   const byPriority = db.prepare('SELECT priority, COUNT(*) as count FROM enquiries GROUP BY priority').all();
 
   const openCount = db
-    .prepare("SELECT COUNT(*) as c FROM enquiries WHERE status NOT IN ('RESOLVED', 'IGNORED')")
+    .prepare(`SELECT COUNT(*) as c FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL})`)
     .get().c;
 
   const oldestOpen = db
     .prepare(
-      "SELECT * FROM enquiries WHERE status NOT IN ('RESOLVED', 'IGNORED') ORDER BY received_at ASC LIMIT 1"
+      `SELECT * FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) ORDER BY received_at ASC LIMIT 1`
     )
     .get();
 
   const urgentOpen = db
     .prepare(
-      "SELECT COUNT(*) as c FROM enquiries WHERE priority = 'URGENT' AND status NOT IN ('RESOLVED', 'IGNORED')"
+      `SELECT COUNT(*) as c FROM enquiries WHERE priority = 'URGENT' AND status NOT IN (${CLOSED_STATUS_SQL})`
     )
     .get().c;
 
@@ -348,7 +367,7 @@ function overviewStats() {
          END as bucket,
          COUNT(*) as count
        FROM enquiries
-       WHERE status NOT IN ('RESOLVED', 'IGNORED')
+       WHERE status NOT IN (${CLOSED_STATUS_SQL})
        GROUP BY bucket`
     )
     .all();
@@ -363,12 +382,12 @@ function overviewStats() {
   // a person.
   const byAssignee = db
     .prepare(
-      "SELECT assigned_to, COUNT(*) as count FROM enquiries WHERE status NOT IN ('RESOLVED', 'IGNORED') AND assigned_to IS NOT NULL AND assigned_to != '' GROUP BY assigned_to ORDER BY count DESC"
+      `SELECT assigned_to, COUNT(*) as count FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) AND assigned_to IS NOT NULL AND assigned_to != '' GROUP BY assigned_to ORDER BY count DESC`
     )
     .all();
   const unassignedOpen = db
     .prepare(
-      "SELECT COUNT(*) as c FROM enquiries WHERE status NOT IN ('RESOLVED', 'IGNORED') AND (assigned_to IS NULL OR assigned_to = '')"
+      `SELECT COUNT(*) as c FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) AND (assigned_to IS NULL OR assigned_to = '')`
     )
     .get().c;
 
@@ -421,4 +440,5 @@ module.exports = {
   statusForFlag,
   statusForCategories,
   statusForReply,
+  statusForMissingMessage,
 };

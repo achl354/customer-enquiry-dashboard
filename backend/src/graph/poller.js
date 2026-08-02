@@ -20,6 +20,13 @@ function isGraphConfigured() {
  * RESOLVED; 'flagged' only advances a still-untouched NEW enquiry to
  * IN_PROGRESS — none of these ever downgrade a more specific status staff
  * already have (e.g. WAITING_ON_CUSTOMER).
+ *
+ * If the message itself is confirmed gone (deleted/moved beyond lookup —
+ * see fetchMessageFlags), and neither of the above already resolved it,
+ * it moves to REMOVED rather than staying open forever with nothing left
+ * to ever check again. Deliberately NOT folded into RESOLVED: disappearing
+ * from the mailbox isn't the same evidence of being handled as an explicit
+ * category/flag is, even if that's the common case in practice.
  */
 async function syncFlagStatuses() {
   const open = repo.listOpenEnquiriesForFlagSync();
@@ -30,8 +37,11 @@ async function syncFlagStatuses() {
   let updated = 0;
   for (const enquiry of open) {
     const info = results.get(enquiry.graphMessageId);
-    const nextStatus = repo.statusForCategories(info?.categories) || repo.statusForFlag(info?.flagStatus);
-    if (nextStatus === 'RESOLVED' || nextStatus === 'IGNORED') {
+    const nextStatus =
+      repo.statusForCategories(info?.categories) ||
+      repo.statusForFlag(info?.flagStatus) ||
+      repo.statusForMissingMessage(info?.missing);
+    if (nextStatus === 'RESOLVED' || nextStatus === 'IGNORED' || nextStatus === 'REMOVED') {
       repo.updateEnquiry(enquiry.id, { status: nextStatus });
       updated += 1;
     } else if (nextStatus === 'IN_PROGRESS' && enquiry.status === 'NEW') {

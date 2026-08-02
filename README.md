@@ -332,6 +332,29 @@ Runs as part of every `runPollOnce()` alongside the flag sync, adding
 `conversationId` (seed data, or anything ingested before this feature
 existed) are skipped — nothing to check them against.
 
+## Status sync (message deleted from the mailbox)
+
+The flag/category sync above depends on the source message still existing
+in the mailbox to look up. If it's gone — deleted, or moved somewhere its
+Graph ID no longer resolves (e.g. mailbox storage-quota cleanup) — that
+lookup 404s. Rather than leaving the enquiry stuck open forever with
+nothing left to ever check again, it moves to a dedicated `REMOVED` status
+(`statusForMissingMessage` in `db/repository.js`), checked only as a last
+resort after categories and the flag — either of those still wins if
+present.
+
+**Deliberately not folded into `RESOLVED`.** Deletion isn't the same
+confirmation of being handled as an explicit category/flag — it's an
+inference, not a fact from staff. Even if mail is typically acted on before
+being cleared out, "the message disappeared" and "someone marked this done"
+are different signals, so `REMOVED` stays its own status: excluded from Open/Urgent counts and the
+queue like `RESOLVED`/`IGNORED` are, but visually distinct (a gold badge,
+"Removed from mailbox" — not the clean green of a genuine `RESOLVED`) so
+it's still auditable which of the two actually happened. A 404 from
+something *other* than the message itself being gone (rate limiting, a
+transient error) is not treated as removal — only a confirmed 404 on that
+specific message triggers this.
+
 ## Access control (Basic Auth)
 
 The dashboard shows real customer/health-department correspondence with no

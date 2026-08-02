@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { statusForFlag, statusForCategories, statusForReply } = require('./repository');
+const { statusForFlag, statusForCategories, statusForReply, statusForMissingMessage } = require('./repository');
 
 // Pure-function tests for the "how does an enquiry get marked closed" logic
 // — no DB needed for these three. Categories were added after checking real
@@ -57,4 +57,13 @@ test('statusForReply: internal-only reply is in progress', () => {
 test('statusForReply: never downgrades a more advanced status', () => {
   assert.equal(statusForReply(true, 'RESOLVED'), null);
   assert.equal(statusForReply(false, 'WAITING_ON_CUSTOMER'), null);
+});
+
+test('statusForMissingMessage: a confirmed-missing message becomes REMOVED', () => {
+  assert.equal(statusForMissingMessage(true), 'REMOVED');
+});
+
+test('statusForMissingMessage: not confirmed missing is not a signal', () => {
+  assert.equal(statusForMissingMessage(false), null);
+  assert.equal(statusForMissingMessage(undefined), null);
 });

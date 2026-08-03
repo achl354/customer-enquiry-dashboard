@@ -140,13 +140,17 @@ export default function Overview() {
           </div>
           <div className="value">{openDisplay}</div>
         </div>
-        <div className={`stat-tile stat-tile-in${stats.urgentOpen > 0 ? ' attention' : ''}`} style={{ animationDelay: '120ms' }}>
+        <Link
+          to="/queue?priority=URGENT"
+          className={`stat-tile stat-tile-in stat-tile-link${stats.urgentOpen > 0 ? ' attention' : ''}`}
+          style={{ animationDelay: '120ms' }}
+        >
           <div className="stat-tile-header">
             <IconAlertTriangle className="stat-icon" />
             <div className="label">Urgent &amp; open</div>
           </div>
           <div className={`value ${stats.urgentOpen > 0 ? 'critical' : ''}`}>{urgentDisplay}</div>
-        </div>
+        </Link>
         <div className="stat-tile stat-tile-in" style={{ animationDelay: '180ms' }}>
           <div className="stat-tile-header">
             <IconClock className="stat-icon" />

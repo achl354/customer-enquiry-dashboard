@@ -124,7 +124,8 @@ export default function Overview() {
 
   return (
     <div>
-      <h2>Mailbox Overview{mailbox ? ` - ${mailbox}` : ''}</h2>
+      <h2>Mailbox Overview</h2>
+      {mailbox && <div className="overview-mailbox">{mailbox}</div>}
 
       <div className="stat-grid">
         <div className="stat-tile stat-tile-in" style={{ animationDelay: '0ms' }}>
@@ -195,7 +196,7 @@ export default function Overview() {
       </div>
 
       {stats.oldestOpen && (
-        <div className="panel">
+        <div className="panel panel-narrow">
           <h3>Oldest unactioned enquiry</h3>
           <p style={{ margin: 0, fontSize: 13 }}>
             <Link to={`/enquiries/${stats.oldestOpen.id}`}>{stats.oldestOpen.subject}</Link>

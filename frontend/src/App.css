@@ -288,6 +288,18 @@
   text-wrap: balance;
 }
 
+/* A mailbox address has no spaces to wrap at, so without overflow-wrap a
+   narrow column doesn't shrink it — it silently gets clipped past the
+   container edge instead (worse than overflowing, since there's no
+   scrollbar to reveal the missing part either). Its own margins replace
+   the h2's bottom margin as the gap before the stat grid. */
+.overview-mailbox {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin: -6px 0 clamp(10px, 2vh, 22px);
+  overflow-wrap: break-word;
+}
+
 /* Stat tiles — a fixed 3-column grid (we always render exactly 6 tiles) so
    they land as two even rows instead of auto-fit wrapping an orphan 6th
    tile onto its own near-empty row. */
@@ -296,6 +308,11 @@
   grid-template-columns: repeat(3, 1fr);
   gap: clamp(8px, 1.2vh, 14px);
   margin-bottom: clamp(12px, 2vh, 28px);
+  /* Unlike the bar/line charts below, a stat tile's content (an icon,
+     label, and one number) doesn't get more useful at 800px+ wide — on an
+     ultra-wide monitor this stopped it from stretching into a near-empty
+     box with everything crammed on the left. */
+  max-width: 1600px;
 }
 
 @media (max-width: 900px) {
@@ -523,6 +540,13 @@
   box-shadow: var(--card-shadow);
   padding: clamp(12px, 1.8vh, 22px);
   margin-bottom: clamp(10px, 1.4vh, 20px);
+}
+
+/* Same reasoning as .stat-grid's max-width — a single line of text (the
+   oldest-enquiry banner) doesn't need to stretch edge-to-edge on a wide
+   monitor, unlike the chart panels below it. */
+.panel-narrow {
+  max-width: 1600px;
 }
 
 .panel h3 {

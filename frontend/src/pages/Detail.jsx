@@ -118,6 +118,14 @@ export default function Detail() {
   if (!enquiry) return <div className="loading">Loading…</div>;
 
   const f = enquiry.extractedFields;
+  // mailto: (unlike webLink) respects the OS's default mail app setting, so
+  // this is the one link that can actually land in desktop Outlook instead
+  // of the browser — at the cost of opening as a new email rather than a
+  // true reply on the original thread (mailto has no way to express that).
+  const replySubject = /^re:/i.test(enquiry.subject || '') ? enquiry.subject : `RE: ${enquiry.subject || ''}`;
+  const replyMailto = enquiry.sender.email
+    ? `mailto:${enquiry.sender.email}?subject=${encodeURIComponent(replySubject)}&body=${encodeURIComponent(draftText)}`
+    : null;
 
   return (
     <div>
@@ -209,6 +217,9 @@ export default function Detail() {
                 />
                 <div className="draft-actions">
                   <button type="button" onClick={handleCopyDraft}>{copied ? 'Copied!' : 'Copy to clipboard'}</button>
+                  {replyMailto && (
+                    <a href={replyMailto} className="outlook-link">Reply via email app</a>
+                  )}
                   <span className="draft-hint">Review before sending — edit freely, this is a starting point.</span>
                 </div>
               </>
@@ -232,7 +243,9 @@ export default function Detail() {
                   Open in Outlook
                 </a>
                 <span className="draft-hint">
-                  {enquiry.draftReply ? 'Paste the draft above and send from the original message.' : 'Reply directly from the original message.'}
+                  {enquiry.draftReply
+                    ? 'Opens the original thread in Outlook on the web — paste the draft above and send.'
+                    : 'Opens the original thread in Outlook on the web.'}
                 </span>
               </div>
             )}

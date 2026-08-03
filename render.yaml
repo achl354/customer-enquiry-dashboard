@@ -2,15 +2,18 @@ services:
   - type: web
     name: customer-enquiry-dashboard
     runtime: node
-    # Free tier for now, to confirm the deploy pipeline works without adding
-    # billing. Free instances have no persistent disk (SQLite resets on every
-    # redeploy/restart) and spin down after ~15 min idle (which also stops
-    # the per-minute poller until the next request wakes it up) — fine for
-    # confirming the app deploys and loads, not for real data retention or
-    # reliable live polling. Switch to `plan: starter` and re-add a `disk:`
-    # block (mountPath e.g. /var/data, with DB_PATH pointed at it) once ready
-    # to keep this running for real.
-    plan: free
+    # Starter — persistent disk below means the SQLite database survives
+    # restarts/redeploys instead of resetting every time (Free tier has no
+    # persistent disk, so a restart wiped all ingested data and forced a
+    # full mailbox backfill + reclassification through Claude on the next
+    # poll — a real, recurring AI cost, not just a demo inconvenience).
+    # Starter also has no idle spin-down, so the per-minute poller now runs
+    # continuously instead of pausing whenever nobody has the dashboard open.
+    plan: starter
+    disk:
+      name: enquiry-data
+      mountPath: /var/data
+      sizeGB: 1
     # --include=dev is required here: NODE_ENV=production (set below) makes
     # npm install skip devDependencies by default, which would leave vite
     # (a frontend devDependency) missing and fail "npm run build" with
@@ -20,6 +23,12 @@ services:
     startCommand: cd backend && npm start
     healthCheckPath: /api/health
     envVars:
+      # Points the database at the persistent disk mounted above — without
+      # this it falls back to the app's own ephemeral folder, which is
+      # exactly the "wiped on every restart" behavior this disk exists to
+      # fix. See backend/src/db/index.js for the fallback.
+      - key: DB_PATH
+        value: /var/data/enquiries.db
       - key: NODE_ENV
         value: production
       - key: POLL_CRON_EXPRESSION

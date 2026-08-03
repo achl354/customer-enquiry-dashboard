@@ -281,7 +281,13 @@
      page's layout viewport on a narrow screen (the sidebar then renders
      "short" because the browser zooms the entire layout out to fit). */
   min-width: 0;
-  padding: clamp(16px, 3vh, 32px) 40px;
+  /* Tightened vh-scaling throughout this page (here through chart svg
+     height below) so the Overview page fits within common desktop
+     viewport heights (~900-1080px) without vertical scrolling, instead
+     of only scaling down gracefully. Below ~700px of actual viewport
+     height it will still scroll — better than compressing further into
+     illegibility. */
+  padding: clamp(12px, 2vh, 28px) 40px;
 }
 
 .main h2 {
@@ -300,7 +306,7 @@
   align-items: baseline;
   flex-wrap: wrap;
   column-gap: 10px;
-  margin-bottom: clamp(10px, 2vh, 22px);
+  margin-bottom: clamp(8px, 1.2vh, 16px);
 }
 
 .overview-separator {
@@ -327,8 +333,8 @@
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: clamp(8px, 1.2vh, 14px);
-  margin-bottom: clamp(8px, 1.2vh, 14px);
+  gap: clamp(6px, 0.8vh, 12px);
+  margin-bottom: clamp(6px, 0.8vh, 12px);
   /* Unlike the bar/line charts below, a stat tile's content (an icon,
      label, and one number) doesn't get more useful at 800px+ wide — on an
      ultra-wide monitor this stopped it from stretching into a near-empty
@@ -349,8 +355,8 @@
 .stat-grid-secondary {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: clamp(6px, 1vh, 10px);
-  margin-bottom: clamp(12px, 2vh, 28px);
+  gap: clamp(6px, 0.8vh, 10px);
+  margin-bottom: clamp(8px, 1.2vh, 18px);
   max-width: 1600px;
 }
 
@@ -414,7 +420,7 @@
   border: 1px solid var(--border);
   border-radius: var(--card-radius);
   box-shadow: var(--card-shadow);
-  padding: clamp(10px, 1.6vh, 18px) 20px;
+  padding: clamp(8px, 1.1vh, 16px) 20px;
   position: relative;
   overflow: hidden;
   transition: box-shadow 0.15s ease, transform 0.15s ease;
@@ -561,7 +567,7 @@
      .main isn't capped at 1320px) this lets panels flow up to 4-across
      instead of always stacking into extra rows purely to fill height. */
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: clamp(10px, 1.4vh, 20px);
+  gap: clamp(8px, 1vh, 16px);
 }
 
 @media (max-width: 860px) {
@@ -586,8 +592,8 @@
   border: 1px solid var(--border);
   border-radius: var(--card-radius);
   box-shadow: var(--card-shadow);
-  padding: clamp(12px, 1.8vh, 22px);
-  margin-bottom: clamp(10px, 1.4vh, 20px);
+  padding: clamp(10px, 1.3vh, 18px);
+  margin-bottom: clamp(8px, 1vh, 16px);
 }
 
 /* Same reasoning as .stat-grid's max-width — a single line of text (the
@@ -610,7 +616,7 @@
   grid-template-columns: 160px 1fr 44px;
   align-items: center;
   gap: 10px;
-  height: clamp(20px, 2.2vh, 28px);
+  height: clamp(18px, 1.8vh, 26px);
 }
 
 /* Some bar rows are <Link>s through to a filtered queue view — reset
@@ -680,7 +686,7 @@
 
 .trend-chart svg {
   width: 100%;
-  height: clamp(90px, 12vh, 140px);
+  height: clamp(75px, 9vh, 130px);
   display: block;
   cursor: crosshair;
 }

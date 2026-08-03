@@ -122,3 +122,13 @@ export function IconMonitor(props) {
     </svg>
   );
 }
+
+export function IconRefresh(props) {
+  return (
+    <svg {...common} {...props}>
+      <path d="M4 4v5h5" />
+      <path d="M20 20v-5h-5" />
+      <path d="M4.6 15A8 8 0 0 0 19 16.5M19.4 9A8 8 0 0 0 5 7.5" />
+    </svg>
+  );
+}

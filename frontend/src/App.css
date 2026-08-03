@@ -234,6 +234,36 @@
   flex-shrink: 0;
 }
 
+.sidebar-refresh-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 0;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.sidebar-refresh-btn .nav-icon {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+}
+
+.sidebar-refresh-btn:hover {
+  color: #ffffff;
+}
+
+.sidebar-refresh-btn:hover .nav-icon {
+  color: var(--accent-gold);
+}
+
 .status-dot-demo {
   color: rgba(255, 255, 255, 0.3);
   flex-shrink: 0;
@@ -311,13 +341,15 @@
   .nav-count,
   .sidebar-search-kbd,
   .sidebar-toggle-btn span,
-  .sidebar-status-row span {
+  .sidebar-status-row span,
+  .sidebar-refresh-btn span {
     display: none;
   }
 
   .sidebar a,
   .sidebar-search-btn,
-  .sidebar-toggle-btn {
+  .sidebar-toggle-btn,
+  .sidebar-refresh-btn {
     justify-content: center;
     padding: 10px 6px;
   }

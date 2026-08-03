@@ -14,6 +14,7 @@ import {
   IconMoon,
   IconMonitor,
   IconSearch,
+  IconRefresh,
 } from './components/Icons';
 import { CommandPalette } from './components/CommandPalette';
 import logoFull from './assets/jdhg-logo-full-white.png';
@@ -24,6 +25,7 @@ import logoMark from './assets/jdhg-mark-white-trimmed.png';
 import './App.css';
 
 const STATS_REFRESH_MS = 60000;
+const STATS_REFRESH_SECONDS = STATS_REFRESH_MS / 1000;
 const THEME_KEY = 'enquiry-dashboard-theme';
 const FORCE_DESKTOP_KEY = 'enquiry-dashboard-force-desktop';
 const DESKTOP_VIEWPORT = 'width=1280';
@@ -58,6 +60,7 @@ function App() {
   });
   const [forceDesktop, setForceDesktop] = useState(() => localStorage.getItem(FORCE_DESKTOP_KEY) === '1');
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [secondsToRefresh, setSecondsToRefresh] = useState(STATS_REFRESH_SECONDS);
 
   useEffect(() => {
     function handleKeyDown(e) {
@@ -70,16 +73,33 @@ function App() {
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // A single 1-second tick drives both the sidebar countdown display and the
+  // actual refresh (firing it at 0 instead of running a separate 60s
+  // interval) — that way "seconds remaining" is never just a cosmetic
+  // number disconnected from when data actually reloads.
   useEffect(() => {
     const load = () => getOverviewStats().then(setStats).catch(() => {});
     load();
-    const interval = setInterval(load, STATS_REFRESH_MS);
-    return () => clearInterval(interval);
+    const tick = setInterval(() => {
+      setSecondsToRefresh((s) => {
+        if (s <= 1) {
+          load();
+          return STATS_REFRESH_SECONDS;
+        }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(tick);
   }, []);
 
   useEffect(() => {
     getIngestStatus().then(setIngestStatus).catch(() => {});
   }, []);
+
+  function refreshNow() {
+    getOverviewStats().then(setStats).catch(() => {});
+    setSecondsToRefresh(STATS_REFRESH_SECONDS);
+  }
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -171,6 +191,10 @@ function App() {
                 <span>{ingestStatus.aiConfigured ? 'Claude classification' : 'Rules-only classification'}</span>
               </div>
             )}
+            <button type="button" className="sidebar-refresh-btn" onClick={refreshNow} title="Refresh now">
+              <IconRefresh className="nav-icon" />
+              <span>Refreshing in {secondsToRefresh}s</span>
+            </button>
           </div>
         </nav>
         <div className="main">

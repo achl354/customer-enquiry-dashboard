@@ -541,6 +541,25 @@
   height: clamp(20px, 2.2vh, 28px);
 }
 
+/* Some bar rows are <Link>s through to a filtered queue view — reset
+   anchor defaults and add a hover cue so it reads as clickable. */
+.bar-row-link {
+  text-decoration: none;
+  color: inherit;
+  border-radius: 6px;
+  padding: 0 4px;
+  margin: 0 -4px;
+  transition: background 0.15s ease;
+}
+
+.bar-row-link:hover {
+  background: color-mix(in srgb, var(--series-1) 8%, transparent);
+}
+
+.bar-row-link:hover .bar-label {
+  color: var(--text-primary);
+}
+
 /* The 160px/44px fixed columns are a hard floor (~224px including gaps)
    that a real phone's content width can't clear even with the sidebar
    already collapsed to its icon rail — same overflow bug class as the

@@ -151,7 +151,7 @@ export default function Overview() {
           </div>
           <div className={`value ${stats.urgentOpen > 0 ? 'critical' : ''}`}>{urgentDisplay}</div>
         </Link>
-        <div className="stat-tile stat-tile-in" style={{ animationDelay: '180ms' }}>
+        <Link to="/queue?status=RESOLVED" className="stat-tile stat-tile-in stat-tile-link" style={{ animationDelay: '180ms' }}>
           <div className="stat-tile-header">
             <IconClock className="stat-icon" />
             <div className="label">Avg. resolution time</div>
@@ -166,7 +166,7 @@ export default function Overview() {
                 ? `based on ${stats.resolvedCount} resolved`
                 : `only ${stats.resolvedCount} resolved so far — too few for a reliable average`}
           </div>
-        </div>
+        </Link>
         <div className="stat-tile stat-tile-in" style={{ animationDelay: '240ms' }}>
           <div className="stat-tile-header">
             <IconSparkle className="stat-icon" />
@@ -215,12 +215,16 @@ export default function Overview() {
       <div className="chart-grid">
         <div className="panel">
           <h3>Enquiries by category</h3>
-          <BarList data={categoryData} />
+          <BarList data={categoryData} linkTo={(key) => `/queue?category=${encodeURIComponent(key)}`} />
         </div>
 
         <div className="panel">
           <h3>Enquiries by status</h3>
-          <BarList data={statusData} colorFor={(key) => STATUS_COLORS[key]} />
+          <BarList
+            data={statusData}
+            colorFor={(key) => STATUS_COLORS[key]}
+            linkTo={(key) => `/queue?status=${encodeURIComponent(key)}`}
+          />
         </div>
 
         <div className="panel">

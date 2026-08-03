@@ -3,9 +3,15 @@ const path = require('path');
 const fs = require('fs');
 
 const DATA_DIR = path.join(__dirname, '..', '..', 'data');
-if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const DB_PATH = process.env.DB_PATH || path.join(DATA_DIR, 'enquiries.db');
+// Ensures whichever directory DB_PATH actually resolves to exists — the old
+// version of this only ever created the default DATA_DIR, so setting
+// DB_PATH to a custom path (e.g. a mounted persistent disk) skipped this
+// entirely and would crash on boot if that directory wasn't already there.
+const dbDir = path.dirname(DB_PATH);
+if (!fs.existsSync(dbDir)) fs.mkdirSync(dbDir, { recursive: true });
+
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 

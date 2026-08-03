@@ -17,13 +17,14 @@ function parseNonNegativeInt(value) {
 }
 
 router.get('/', (req, res) => {
-  const { category, priority, status, search, lowConfidence, sort, order, limit, offset } = req.query;
+  const { category, priority, status, search, lowConfidence, unassigned, sort, order, limit, offset } = req.query;
   const result = repo.listEnquiries({
     category: category || undefined,
     priority: priority || undefined,
     status: status || undefined,
     search: search || undefined,
     lowConfidence: lowConfidence === 'true' || lowConfidence === '1',
+    unassigned: unassigned === 'true' || unassigned === '1',
     sort: sort || undefined,
     order: order || undefined,
     limit: parseNonNegativeInt(limit),
@@ -59,13 +60,14 @@ function csvField(value) {
 // reporting rather than working the queue itself, so drafts/body content
 // are deliberately left out in favour of a lean, reportable column set.
 router.get('/export', (req, res) => {
-  const { category, priority, status, search, lowConfidence, sort, order } = req.query;
+  const { category, priority, status, search, lowConfidence, unassigned, sort, order } = req.query;
   const items = repo.listEnquiriesForExport({
     category: category || undefined,
     priority: priority || undefined,
     status: status || undefined,
     search: search || undefined,
     lowConfidence: lowConfidence === 'true' || lowConfidence === '1',
+    unassigned: unassigned === 'true' || unassigned === '1',
     sort: sort || undefined,
     order: order || undefined,
   });

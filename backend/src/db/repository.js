@@ -195,7 +195,7 @@ const SORT_COLUMNS = {
 // tile's count and this filter can never drift apart.
 const LOW_CONFIDENCE_THRESHOLD = 0.5;
 
-function buildWhereClause({ category, priority, status, search, lowConfidence }) {
+function buildWhereClause({ category, priority, status, search, lowConfidence, unassigned }) {
   const clauses = [];
   const params = {};
 
@@ -215,6 +215,9 @@ function buildWhereClause({ category, priority, status, search, lowConfidence })
     clauses.push("classified_by = 'ai' AND confidence < @lowConfidenceThreshold");
     params.lowConfidenceThreshold = LOW_CONFIDENCE_THRESHOLD;
   }
+  if (unassigned) {
+    clauses.push("(assigned_to IS NULL OR assigned_to = '')");
+  }
   if (search) {
     clauses.push(
       '(subject LIKE @search OR body_preview LIKE @search OR sender_email LIKE @search OR po_number LIKE @search OR facility LIKE @search OR assigned_to LIKE @search)'
@@ -225,8 +228,8 @@ function buildWhereClause({ category, priority, status, search, lowConfidence })
   return { where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params };
 }
 
-function listEnquiries({ category, priority, status, search, lowConfidence, sort = 'receivedAt', order = 'desc', limit = 100, offset = 0 } = {}) {
-  const { where, params } = buildWhereClause({ category, priority, status, search, lowConfidence });
+function listEnquiries({ category, priority, status, search, lowConfidence, unassigned, sort = 'receivedAt', order = 'desc', limit = 100, offset = 0 } = {}) {
+  const { where, params } = buildWhereClause({ category, priority, status, search, lowConfidence, unassigned });
   const sortCol = SORT_COLUMNS[sort] || 'received_at';
   const dir = order === 'asc' ? 'ASC' : 'DESC';
 
@@ -241,8 +244,8 @@ function listEnquiries({ category, priority, status, search, lowConfidence, sort
 
 // Same filters as listEnquiries, no pagination — used by CSV export, which
 // needs every matching row rather than one page of results.
-function listEnquiriesForExport({ category, priority, status, search, lowConfidence, sort = 'receivedAt', order = 'desc' } = {}) {
-  const { where, params } = buildWhereClause({ category, priority, status, search, lowConfidence });
+function listEnquiriesForExport({ category, priority, status, search, lowConfidence, unassigned, sort = 'receivedAt', order = 'desc' } = {}) {
+  const { where, params } = buildWhereClause({ category, priority, status, search, lowConfidence, unassigned });
   const sortCol = SORT_COLUMNS[sort] || 'received_at';
   const dir = order === 'asc' ? 'ASC' : 'DESC';
 
@@ -326,6 +329,10 @@ const urgentOpenStmt = db.prepare(
   `SELECT COUNT(*) as c FROM enquiries WHERE priority = 'URGENT' AND status NOT IN (${CLOSED_STATUS_SQL})`
 );
 const totalStmt = db.prepare('SELECT COUNT(*) as c FROM enquiries');
+// Gives "Total enquiries" a time bound — plain count with no context reads
+// as if it might be a weekly/monthly figure, when it's actually an
+// unbounded running total since this system started tracking the mailbox.
+const earliestReceivedAtStmt = db.prepare('SELECT MIN(received_at) as earliest FROM enquiries');
 const byClassifiedByStmt = db.prepare('SELECT classified_by, COUNT(*) as count FROM enquiries GROUP BY classified_by');
 const lowConfidenceCountStmt = db.prepare(
   `SELECT COUNT(*) as c FROM enquiries WHERE classified_by = 'ai' AND confidence < ${LOW_CONFIDENCE_THRESHOLD}`
@@ -376,6 +383,7 @@ function overviewStats() {
   const oldestOpen = oldestOpenStmt.get();
   const urgentOpen = urgentOpenStmt.get().c;
   const total = totalStmt.get().c;
+  const earliestReceivedAt = earliestReceivedAtStmt.get().earliest;
   const byClassifiedBy = byClassifiedByStmt.all();
   const lowConfidenceCount = lowConfidenceCountStmt.get().c;
 
@@ -415,6 +423,7 @@ function overviewStats() {
 
   return {
     total,
+    earliestReceivedAt,
     openCount,
     urgentOpen,
     byCategory: Object.fromEntries(byCategory.map((r) => [r.category, r.count])),

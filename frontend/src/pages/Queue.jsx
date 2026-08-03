@@ -22,7 +22,14 @@ export default function Queue() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const [filters, setFilters] = useState({ category: '', priority: '', status: '', search: '', lowConfidence: undefined });
+  const [filters, setFilters] = useState({
+    category: '',
+    priority: '',
+    status: '',
+    search: '',
+    lowConfidence: undefined,
+    unassigned: undefined,
+  });
   const [sort, setSort] = useState('receivedAt');
   const [order, setOrder] = useState('desc');
   const [page, setPage] = useState(0);
@@ -36,6 +43,7 @@ export default function Queue() {
       status: searchParams.get('status') || '',
       search: searchParams.get('search') || '',
       lowConfidence: searchParams.get('lowConfidence') === 'true' ? true : undefined,
+      unassigned: searchParams.get('unassigned') === 'true' ? true : undefined,
     });
     setPage(0);
   }, [searchParams]);
@@ -72,12 +80,12 @@ export default function Queue() {
     setFilters((f) => ({ ...f, [key]: e.target.value }));
   };
 
-  // No dropdown covers this one (unlike category/priority/status), so it
-  // needs its own visible indicator + a way to clear it — otherwise landing
-  // here from the Overview tile leaves no sign the list is filtered at all.
-  const clearLowConfidence = () => {
+  // Neither of these has a dropdown (unlike category/priority/status), so
+  // each needs its own visible indicator + a way to clear it — otherwise
+  // landing here from an Overview tile leaves no sign the list is filtered.
+  const clearParam = (key) => () => {
     const next = new URLSearchParams(searchParams);
-    next.delete('lowConfidence');
+    next.delete(key);
     setSearchParams(next);
     setPage(0);
   };
@@ -128,7 +136,13 @@ export default function Queue() {
         {filters.lowConfidence && (
           <span className="filter-chip">
             Low confidence
-            <button type="button" onClick={clearLowConfidence} aria-label="Clear low-confidence filter">×</button>
+            <button type="button" onClick={clearParam('lowConfidence')} aria-label="Clear low-confidence filter">×</button>
+          </span>
+        )}
+        {filters.unassigned && (
+          <span className="filter-chip">
+            Unassigned
+            <button type="button" onClick={clearParam('unassigned')} aria-label="Clear unassigned filter">×</button>
           </span>
         )}
         <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{total} result{total === 1 ? '' : 's'}</span>

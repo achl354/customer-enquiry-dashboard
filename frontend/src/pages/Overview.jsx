@@ -5,7 +5,7 @@ import { BarList } from '../components/BarList';
 import { TrendChart } from '../components/TrendChart';
 import { Sparkline } from '../components/Sparkline';
 import { OverviewSkeleton } from '../components/Skeletons';
-import { IconLayers, IconInbox, IconAlertTriangle, IconClock, IconSparkle, IconEye } from '../components/Icons';
+import { IconLayers, IconInbox, IconAlertTriangle, IconClock, IconUser, IconEye } from '../components/Icons';
 import { categoryLabel, statusLabel } from '../taxonomy';
 import { useCountUp } from '../hooks/useCountUp';
 
@@ -61,7 +61,7 @@ export default function Overview() {
   const openDisplay = useCountUp(stats?.openCount ?? null);
   const urgentDisplay = useCountUp(stats?.urgentOpen ?? null);
   const avgResolutionDisplay = useCountUp(stats?.avgResolutionHours ?? null, { decimals: 1 });
-  const aiClassifiedDisplay = useCountUp(stats?.byClassifiedBy?.ai ?? null);
+  const unassignedDisplay = useCountUp(stats?.unassignedOpen ?? null);
   const lowConfidenceDisplay = useCountUp(stats?.lowConfidenceCount ?? null);
 
   // Memoized since these are pure functions of `stats` alone, but Overview
@@ -122,6 +122,13 @@ export default function Overview() {
 
   const hasEnoughResolved = stats.resolvedCount >= MIN_RESOLVED_SAMPLE;
 
+  // "Total enquiries" is an unbounded running count since this system
+  // started tracking the mailbox, not a weekly/monthly figure — without
+  // this it reads as if it might be either.
+  const sinceDate = stats.earliestReceivedAt
+    ? new Date(stats.earliestReceivedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+    : null;
+
   return (
     <div>
       <h2>Mailbox Overview</h2>
@@ -140,6 +147,7 @@ export default function Overview() {
             </div>
             <Sparkline values={sparklineValues} />
           </div>
+          {sinceDate && <div className="draft-hint">All-time · since {sinceDate}</div>}
         </div>
         <div className="stat-tile stat-tile-in" style={{ animationDelay: '60ms' }}>
           <div className="stat-tile-header">
@@ -175,13 +183,17 @@ export default function Overview() {
                 : `only ${stats.resolvedCount} resolved so far — too few for a reliable average`}
           </div>
         </Link>
-        <div className="stat-tile stat-tile-in" style={{ animationDelay: '240ms' }}>
+        <Link
+          to="/queue?unassigned=true"
+          className={`stat-tile stat-tile-in stat-tile-link${stats.unassignedOpen > 0 ? ' attention' : ''}`}
+          style={{ animationDelay: '240ms' }}
+        >
           <div className="stat-tile-header">
-            <IconSparkle className="stat-icon" />
-            <div className="label">Classified by AI</div>
+            <IconUser className="stat-icon" />
+            <div className="label">Unassigned &amp; open</div>
           </div>
-          <div className="value">{aiClassifiedDisplay ?? 0}</div>
-        </div>
+          <div className={`value ${stats.unassignedOpen > 0 ? 'critical' : ''}`}>{unassignedDisplay ?? 0}</div>
+        </Link>
         <Link
           to="/queue?lowConfidence=true"
           className={`stat-tile stat-tile-in stat-tile-link${stats.lowConfidenceCount > 0 ? ' attention' : ''}`}

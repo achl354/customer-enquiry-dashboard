@@ -17,14 +17,13 @@ function parseNonNegativeInt(value) {
 }
 
 router.get('/', (req, res) => {
-  const { category, priority, status, search, lowConfidence, unassigned, sort, order, limit, offset } = req.query;
+  const { category, priority, status, search, lowConfidence, sort, order, limit, offset } = req.query;
   const result = repo.listEnquiries({
     category: category || undefined,
     priority: priority || undefined,
     status: status || undefined,
     search: search || undefined,
     lowConfidence: lowConfidence === 'true' || lowConfidence === '1',
-    unassigned: unassigned === 'true' || unassigned === '1',
     sort: sort || undefined,
     order: order || undefined,
     limit: parseNonNegativeInt(limit),
@@ -41,7 +40,6 @@ const CSV_COLUMNS = [
   ['Category', (e) => e.category],
   ['Priority', (e) => e.priority],
   ['Status', (e) => e.status],
-  ['Assigned to', (e) => e.assignedTo || ''],
   ['Facility / org', (e) => e.extractedFields.facility || ''],
   ['PO number', (e) => e.extractedFields.poNumber || ''],
   ['Quote number', (e) => e.extractedFields.quoteNumber || ''],
@@ -60,14 +58,13 @@ function csvField(value) {
 // reporting rather than working the queue itself, so drafts/body content
 // are deliberately left out in favour of a lean, reportable column set.
 router.get('/export', (req, res) => {
-  const { category, priority, status, search, lowConfidence, unassigned, sort, order } = req.query;
+  const { category, priority, status, search, lowConfidence, sort, order } = req.query;
   const items = repo.listEnquiriesForExport({
     category: category || undefined,
     priority: priority || undefined,
     status: status || undefined,
     search: search || undefined,
     lowConfidence: lowConfidence === 'true' || lowConfidence === '1',
-    unassigned: unassigned === 'true' || unassigned === '1',
     sort: sort || undefined,
     order: order || undefined,
   });
@@ -86,26 +83,6 @@ router.get('/:id', (req, res) => {
   const enquiry = repo.getEnquiry(req.params.id);
   if (!enquiry) return res.status(404).json({ error: 'Enquiry not found' });
   res.json(enquiry);
-});
-
-// Status is intentionally not settable here. The dashboard is an add-on
-// triage layer, not the system of record — staff take real actions (reply,
-// resolve, flag) in Outlook, and status flows one-way from there via the
-// poller's flag sync and reply/forward detection (see graph/poller.js).
-// Letting staff also set it manually here would let the dashboard drift
-// out of sync with what Outlook actually shows. Assigned-to has no Outlook
-// equivalent (it's a dashboard-only team-coordination field), so it stays
-// editable.
-router.patch('/:id', (req, res) => {
-  const { status, assignedTo } = req.body || {};
-  if (status !== undefined) {
-    return res.status(400).json({ error: 'Status can\'t be set manually — it syncs automatically from Outlook (flags and replies).' });
-  }
-  const existing = repo.getEnquiry(req.params.id);
-  if (!existing) return res.status(404).json({ error: 'Enquiry not found' });
-
-  const updated = repo.updateEnquiry(req.params.id, { assignedTo });
-  res.json(updated);
 });
 
 // Generate a draft reply/handoff note on demand — split out from

@@ -28,7 +28,6 @@ export default function Queue() {
     status: '',
     search: '',
     lowConfidence: undefined,
-    unassigned: undefined,
   });
   const [sort, setSort] = useState('receivedAt');
   const [order, setOrder] = useState('desc');
@@ -43,7 +42,6 @@ export default function Queue() {
       status: searchParams.get('status') || '',
       search: searchParams.get('search') || '',
       lowConfidence: searchParams.get('lowConfidence') === 'true' ? true : undefined,
-      unassigned: searchParams.get('unassigned') === 'true' ? true : undefined,
     });
     setPage(0);
   }, [searchParams]);
@@ -80,9 +78,9 @@ export default function Queue() {
     setFilters((f) => ({ ...f, [key]: e.target.value }));
   };
 
-  // Neither of these has a dropdown (unlike category/priority/status), so
-  // each needs its own visible indicator + a way to clear it — otherwise
-  // landing here from an Overview tile leaves no sign the list is filtered.
+  // No dropdown covers this one (unlike category/priority/status), so it
+  // needs its own visible indicator + a way to clear it — otherwise landing
+  // here from the Overview tile leaves no sign the list is filtered at all.
   const clearParam = (key) => () => {
     const next = new URLSearchParams(searchParams);
     next.delete(key);
@@ -129,7 +127,7 @@ export default function Queue() {
         </select>
         <input
           type="search"
-          placeholder="Search subject, sender, PO#, facility, assignee…"
+          placeholder="Search subject, sender, PO#, facility…"
           value={filters.search}
           onChange={update('search')}
         />
@@ -137,12 +135,6 @@ export default function Queue() {
           <span className="filter-chip">
             Low confidence
             <button type="button" onClick={clearParam('lowConfidence')} aria-label="Clear low-confidence filter">×</button>
-          </span>
-        )}
-        {filters.unassigned && (
-          <span className="filter-chip">
-            Unassigned
-            <button type="button" onClick={clearParam('unassigned')} aria-label="Clear unassigned filter">×</button>
           </span>
         )}
         <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{total} result{total === 1 ? '' : 's'}</span>
@@ -176,7 +168,6 @@ export default function Queue() {
                     {col.label}{sort === col.key ? (order === 'asc' ? ' ▲' : ' ▼') : ''}
                   </th>
                 ))}
-                <th>Assigned to</th>
               </tr>
             </thead>
             <tbody>
@@ -203,12 +194,11 @@ export default function Queue() {
                   <td><CategoryPill category={e.category} /></td>
                   <td><PriorityBadge priority={e.priority} /></td>
                   <td><StatusBadge status={e.status} /></td>
-                  <td className="assigned-cell">{e.assignedTo || '—'}</td>
                 </tr>
               ))}
               {items.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="empty-state">No enquiries match these filters.</td>
+                  <td colSpan={6} className="empty-state">No enquiries match these filters.</td>
                 </tr>
               )}
             </tbody>

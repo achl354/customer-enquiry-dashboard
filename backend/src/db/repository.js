@@ -80,13 +80,13 @@ const insertStmt = db.prepare(`
     recipients, subject, body_preview, has_attachments, importance, web_link,
     category, priority, po_number, quote_number, facility, sender_domain, city_tag,
     conversation_id, suggested_action, draft_reply, confidence, classified_by,
-    status, assigned_to, created_at, updated_at
+    status, created_at, updated_at
   ) VALUES (
     @id, @graphMessageId, @internetMessageId, @receivedAt, @senderName, @senderEmail,
     @recipients, @subject, @bodyPreview, @hasAttachments, @importance, @webLink,
     @category, @priority, @poNumber, @quoteNumber, @facility, @senderDomain, @cityTag,
     @conversationId, @suggestedAction, @draftReply, @confidence, @classifiedBy,
-    @status, @assignedTo, @createdAt, @updatedAt
+    @status, @createdAt, @updatedAt
   )
   ON CONFLICT(graph_message_id) DO NOTHING
 `);
@@ -136,7 +136,6 @@ async function ingestEmail(raw) {
     confidence: result.confidence == null ? null : result.confidence,
     classifiedBy: result.classifiedBy || 'rules',
     status: statusForCategories(raw.categories) || statusForFlag(raw.flagStatus) || 'NEW',
-    assignedTo: null,
     createdAt: timestamp,
     updatedAt: timestamp,
   });
@@ -173,7 +172,6 @@ function rowToEnquiry(row) {
     confidence: row.confidence,
     classifiedBy: row.classified_by,
     status: row.status,
-    assignedTo: row.assigned_to,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -195,7 +193,7 @@ const SORT_COLUMNS = {
 // tile's count and this filter can never drift apart.
 const LOW_CONFIDENCE_THRESHOLD = 0.5;
 
-function buildWhereClause({ category, priority, status, search, lowConfidence, unassigned }) {
+function buildWhereClause({ category, priority, status, search, lowConfidence }) {
   const clauses = [];
   const params = {};
 
@@ -215,12 +213,9 @@ function buildWhereClause({ category, priority, status, search, lowConfidence, u
     clauses.push("classified_by = 'ai' AND confidence < @lowConfidenceThreshold");
     params.lowConfidenceThreshold = LOW_CONFIDENCE_THRESHOLD;
   }
-  if (unassigned) {
-    clauses.push("(assigned_to IS NULL OR assigned_to = '')");
-  }
   if (search) {
     clauses.push(
-      '(subject LIKE @search OR body_preview LIKE @search OR sender_email LIKE @search OR po_number LIKE @search OR facility LIKE @search OR assigned_to LIKE @search)'
+      '(subject LIKE @search OR body_preview LIKE @search OR sender_email LIKE @search OR po_number LIKE @search OR facility LIKE @search)'
     );
     params.search = `%${search}%`;
   }
@@ -228,8 +223,8 @@ function buildWhereClause({ category, priority, status, search, lowConfidence, u
   return { where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params };
 }
 
-function listEnquiries({ category, priority, status, search, lowConfidence, unassigned, sort = 'receivedAt', order = 'desc', limit = 100, offset = 0 } = {}) {
-  const { where, params } = buildWhereClause({ category, priority, status, search, lowConfidence, unassigned });
+function listEnquiries({ category, priority, status, search, lowConfidence, sort = 'receivedAt', order = 'desc', limit = 100, offset = 0 } = {}) {
+  const { where, params } = buildWhereClause({ category, priority, status, search, lowConfidence });
   const sortCol = SORT_COLUMNS[sort] || 'received_at';
   const dir = order === 'asc' ? 'ASC' : 'DESC';
 
@@ -244,8 +239,8 @@ function listEnquiries({ category, priority, status, search, lowConfidence, unas
 
 // Same filters as listEnquiries, no pagination — used by CSV export, which
 // needs every matching row rather than one page of results.
-function listEnquiriesForExport({ category, priority, status, search, lowConfidence, unassigned, sort = 'receivedAt', order = 'desc' } = {}) {
-  const { where, params } = buildWhereClause({ category, priority, status, search, lowConfidence, unassigned });
+function listEnquiriesForExport({ category, priority, status, search, lowConfidence, sort = 'receivedAt', order = 'desc' } = {}) {
+  const { where, params } = buildWhereClause({ category, priority, status, search, lowConfidence });
   const sortCol = SORT_COLUMNS[sort] || 'received_at';
   const dir = order === 'asc' ? 'ASC' : 'DESC';
 
@@ -258,7 +253,7 @@ function getEnquiry(id) {
   return rowToEnquiry(row);
 }
 
-const UPDATE_COLUMNS = { status: 'status', assignedTo: 'assigned_to', draftReply: 'draft_reply' };
+const UPDATE_COLUMNS = { status: 'status', draftReply: 'draft_reply' };
 
 function updateEnquiry(id, updates) {
   const sets = [];
@@ -333,7 +328,6 @@ const totalStmt = db.prepare('SELECT COUNT(*) as c FROM enquiries');
 // as if it might be a weekly/monthly figure, when it's actually an
 // unbounded running total since this system started tracking the mailbox.
 const earliestReceivedAtStmt = db.prepare('SELECT MIN(received_at) as earliest FROM enquiries');
-const byClassifiedByStmt = db.prepare('SELECT classified_by, COUNT(*) as count FROM enquiries GROUP BY classified_by');
 const lowConfidenceCountStmt = db.prepare(
   `SELECT COUNT(*) as c FROM enquiries WHERE classified_by = 'ai' AND confidence < ${LOW_CONFIDENCE_THRESHOLD}`
 );
@@ -359,12 +353,6 @@ const agingRowsStmt = db.prepare(
    WHERE status NOT IN (${CLOSED_STATUS_SQL})
    GROUP BY bucket`
 );
-const byAssigneeStmt = db.prepare(
-  `SELECT assigned_to, COUNT(*) as count FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) AND assigned_to IS NOT NULL AND assigned_to != '' GROUP BY assigned_to ORDER BY count DESC`
-);
-const unassignedOpenStmt = db.prepare(
-  `SELECT COUNT(*) as c FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) AND (assigned_to IS NULL OR assigned_to = '')`
-);
 const dailyRowsStmt = db.prepare(
   "SELECT date(received_at) as day, COUNT(*) as count FROM enquiries WHERE received_at >= datetime('now', '-30 days') GROUP BY day"
 );
@@ -384,7 +372,6 @@ function overviewStats() {
   const urgentOpen = urgentOpenStmt.get().c;
   const total = totalStmt.get().c;
   const earliestReceivedAt = earliestReceivedAtStmt.get().earliest;
-  const byClassifiedBy = byClassifiedByStmt.all();
   const lowConfidenceCount = lowConfidenceCountStmt.get().c;
 
   const resolutionStats = resolutionStatsStmt.get();
@@ -403,12 +390,6 @@ function overviewStats() {
     bucket,
     count: agingByBucket[bucket] || 0,
   }));
-
-  // Open workload per assignee — "Team overview" previously showed nothing
-  // about the team itself. Unassigned is reported separately since it's not
-  // a person.
-  const byAssignee = byAssigneeStmt.all();
-  const unassignedOpen = unassignedOpenStmt.get().c;
 
   // Daily volume for the last 30 days, zero-filled — a single week-over-week
   // delta hides spikes/seasonality (e.g. a burst of PO notices on one day).
@@ -431,13 +412,10 @@ function overviewStats() {
     byPriority: Object.fromEntries(byPriority.map((r) => [r.priority, r.count])),
     byFacility: byFacility.map((r) => ({ facility: r.facility, count: r.count })),
     agingBuckets,
-    byAssignee: byAssignee.map((r) => ({ assignedTo: r.assigned_to, count: r.count })),
-    unassignedOpen,
     dailyVolume,
     oldestOpen: rowToEnquiry(oldestOpen),
     avgResolutionHours,
     resolvedCount: resolutionStats.count,
-    byClassifiedBy: Object.fromEntries(byClassifiedBy.map((r) => [r.classified_by, r.count])),
     lowConfidenceCount,
     last7Days,
     prev7Days,

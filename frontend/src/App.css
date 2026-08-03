@@ -782,10 +782,6 @@
   color: var(--text-secondary);
 }
 
-.enquiry-table .assigned-cell {
-  color: var(--text-muted);
-}
-
 .enquiry-table tr.row-urgent {
   background: color-mix(in srgb, var(--status-critical) 5%, transparent);
 }

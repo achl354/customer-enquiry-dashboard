@@ -32,13 +32,6 @@ export function getEnquiry(id, options = {}) {
   return request(`/enquiries/${encodeURIComponent(id)}`, options);
 }
 
-export function updateEnquiry(id, updates) {
-  return request(`/enquiries/${encodeURIComponent(id)}`, {
-    method: 'PATCH',
-    body: JSON.stringify(updates),
-  });
-}
-
 export function generateDraft(id) {
   return request(`/enquiries/${encodeURIComponent(id)}/draft`, { method: 'POST' });
 }

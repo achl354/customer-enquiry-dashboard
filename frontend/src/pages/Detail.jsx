@@ -1,14 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getEnquiry, updateEnquiry, generateDraft, getThreadHistory, getFullBody } from '../api';
+import { getEnquiry, generateDraft, getThreadHistory, getFullBody } from '../api';
 import { PriorityBadge, StatusBadge, CategoryPill } from '../components/Badges';
 
 export default function Detail() {
   const { id } = useParams();
   const [enquiry, setEnquiry] = useState(null);
   const [error, setError] = useState(null);
-  const [assigneeDraft, setAssigneeDraft] = useState('');
-  const [saving, setSaving] = useState(false);
   const [draftText, setDraftText] = useState('');
   const [copied, setCopied] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -44,7 +42,6 @@ export default function Detail() {
     getEnquiry(id, { signal: controller.signal })
       .then((e) => {
         setEnquiry(e);
-        setAssigneeDraft(e.assignedTo || '');
         setDraftText(e.draftReply || '');
 
         // Both are Graph calls, not Claude — no AI cost either way, so
@@ -100,17 +97,6 @@ export default function Detail() {
       setDraftError(e.message);
     } finally {
       setGenerating(false);
-    }
-  }
-
-  async function handleAssigneeBlur() {
-    if (assigneeDraft === (enquiry.assignedTo || '')) return;
-    setSaving(true);
-    try {
-      const updated = await updateEnquiry(id, { assignedTo: assigneeDraft || null });
-      setEnquiry(updated);
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -278,22 +264,10 @@ export default function Detail() {
               <label>Status</label>
               <StatusBadge status={enquiry.status} />
             </div>
-            <p className="draft-hint" style={{ margin: '4px 0 16px' }}>
+            <p className="draft-hint" style={{ margin: '4px 0 0' }}>
               Synced automatically from Outlook (follow-up flags and replies) — take the
               actual action (reply, flag) in Outlook and this will catch up on the next poll.
             </p>
-            <div className="control-row">
-              <label htmlFor="assignee-input">Assigned to</label>
-              <input
-                id="assignee-input"
-                type="text"
-                placeholder="Unassigned"
-                value={assigneeDraft}
-                onChange={(e) => setAssigneeDraft(e.target.value)}
-                onBlur={handleAssigneeBlur}
-                disabled={saving}
-              />
-            </div>
           </div>
         </div>
       </div>

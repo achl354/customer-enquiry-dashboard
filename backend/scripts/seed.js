@@ -48,25 +48,25 @@ async function main({ force = false } = {}) {
     if (id) ingested += 1;
   }
 
-  // Give a handful of enquiries varied statuses/assignees so the dashboard demos
+  // Give a handful of enquiries varied statuses so the dashboard demos
   // realistically instead of everything sitting in NEW.
   const demoUpdates = [
-    { graphMessageId: 'seed-11', status: 'RESOLVED', assignedTo: 'Paula Perdomo' },
-    { graphMessageId: 'seed-14', status: 'RESOLVED', assignedTo: 'Paula Perdomo' },
-    { graphMessageId: 'seed-8', status: 'IN_PROGRESS', assignedTo: 'Paula Perdomo' },
-    { graphMessageId: 'seed-13', status: 'IN_PROGRESS', assignedTo: 'Scott Borresen' },
-    { graphMessageId: 'seed-20', status: 'IN_PROGRESS', assignedTo: 'Paula Perdomo' },
-    { graphMessageId: 'seed-24', status: 'IN_PROGRESS', assignedTo: 'Scott Borresen' },
-    { graphMessageId: 'seed-12', status: 'WAITING_ON_CUSTOMER', assignedTo: 'Paula Perdomo' },
-    { graphMessageId: 'seed-1', status: 'IGNORED', assignedTo: null },
-    { graphMessageId: 'seed-2', status: 'IGNORED', assignedTo: null },
-    { graphMessageId: 'seed-9', status: 'IGNORED', assignedTo: null },
-    { graphMessageId: 'seed-6', status: 'IGNORED', assignedTo: null },
-    { graphMessageId: 'seed-7', status: 'IGNORED', assignedTo: null },
+    { graphMessageId: 'seed-11', status: 'RESOLVED' },
+    { graphMessageId: 'seed-14', status: 'RESOLVED' },
+    { graphMessageId: 'seed-8', status: 'IN_PROGRESS' },
+    { graphMessageId: 'seed-13', status: 'IN_PROGRESS' },
+    { graphMessageId: 'seed-20', status: 'IN_PROGRESS' },
+    { graphMessageId: 'seed-24', status: 'IN_PROGRESS' },
+    { graphMessageId: 'seed-12', status: 'WAITING_ON_CUSTOMER' },
+    { graphMessageId: 'seed-1', status: 'IGNORED' },
+    { graphMessageId: 'seed-2', status: 'IGNORED' },
+    { graphMessageId: 'seed-9', status: 'IGNORED' },
+    { graphMessageId: 'seed-6', status: 'IGNORED' },
+    { graphMessageId: 'seed-7', status: 'IGNORED' },
   ];
 
   for (const u of demoUpdates) {
-    repo.updateEnquiry(u.graphMessageId, { status: u.status, assignedTo: u.assignedTo });
+    repo.updateEnquiry(u.graphMessageId, { status: u.status });
   }
 
   console.log(`Seeded ${ingested} of ${emails.length} sample enquiries (some already present were skipped).`);

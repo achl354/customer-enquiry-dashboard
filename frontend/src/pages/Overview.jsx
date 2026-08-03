@@ -5,7 +5,7 @@ import { BarList } from '../components/BarList';
 import { TrendChart } from '../components/TrendChart';
 import { Sparkline } from '../components/Sparkline';
 import { OverviewSkeleton } from '../components/Skeletons';
-import { IconLayers, IconInbox, IconAlertTriangle, IconClock, IconUser, IconEye } from '../components/Icons';
+import { IconLayers, IconInbox, IconAlertTriangle, IconClock, IconEye } from '../components/Icons';
 import { categoryLabel, statusLabel } from '../taxonomy';
 import { useCountUp } from '../hooks/useCountUp';
 
@@ -61,13 +61,12 @@ export default function Overview() {
   const openDisplay = useCountUp(stats?.openCount ?? null);
   const urgentDisplay = useCountUp(stats?.urgentOpen ?? null);
   const avgResolutionDisplay = useCountUp(stats?.avgResolutionHours ?? null, { decimals: 1 });
-  const unassignedDisplay = useCountUp(stats?.unassignedOpen ?? null);
   const lowConfidenceDisplay = useCountUp(stats?.lowConfidenceCount ?? null);
 
   // Memoized since these are pure functions of `stats` alone, but Overview
-  // re-renders on every useCountUp animation tick (up to 6 concurrent
+  // re-renders on every useCountUp animation tick (up to 5 concurrent
   // animations x ~42 frames over 700ms right after stats load) — without
-  // this, all five array transforms below re-ran on every one of those
+  // this, all four array transforms below re-ran on every one of those
   // frames for no reason.
   const categoryData = useMemo(() => {
     if (!stats) return [];
@@ -93,14 +92,6 @@ export default function Overview() {
   const agingData = useMemo(() => {
     if (!stats) return [];
     return stats.agingBuckets.map((b) => ({ key: b.bucket, value: b.count, label: b.bucket }));
-  }, [stats]);
-
-  const workloadData = useMemo(() => {
-    if (!stats) return [];
-    return [
-      ...stats.byAssignee.map((a) => ({ key: a.assignedTo, value: a.count, label: a.assignedTo })),
-      ...(stats.unassignedOpen > 0 ? [{ key: '__unassigned', value: stats.unassignedOpen, label: 'Unassigned' }] : []),
-    ].sort((a, b) => b.value - a.value);
   }, [stats]);
 
   const sparklineValues = useMemo(() => {
@@ -184,20 +175,9 @@ export default function Overview() {
           </div>
         </Link>
         <Link
-          to="/queue?unassigned=true"
-          className={`stat-tile stat-tile-in stat-tile-link${stats.unassignedOpen > 0 ? ' attention' : ''}`}
-          style={{ animationDelay: '240ms' }}
-        >
-          <div className="stat-tile-header">
-            <IconUser className="stat-icon" />
-            <div className="label">Unassigned &amp; open</div>
-          </div>
-          <div className={`value ${stats.unassignedOpen > 0 ? 'critical' : ''}`}>{unassignedDisplay ?? 0}</div>
-        </Link>
-        <Link
           to="/queue?lowConfidence=true"
           className={`stat-tile stat-tile-in stat-tile-link${stats.lowConfidenceCount > 0 ? ' attention' : ''}`}
-          style={{ animationDelay: '300ms' }}
+          style={{ animationDelay: '240ms' }}
         >
           <div className="stat-tile-header">
             <IconEye className="stat-icon" />
@@ -253,15 +233,6 @@ export default function Overview() {
             <BarList data={facilityData} />
           ) : (
             <p className="draft-hint" style={{ margin: 0 }}>No facility data yet.</p>
-          )}
-        </div>
-
-        <div className="panel">
-          <h3>Open workload by assignee</h3>
-          {workloadData.length > 0 ? (
-            <BarList data={workloadData} colorFor={(key) => (key === '__unassigned' ? 'var(--text-muted)' : 'var(--series-1)')} />
-          ) : (
-            <p className="draft-hint" style={{ margin: 0 }}>No open enquiries.</p>
           )}
         </div>
       </div>

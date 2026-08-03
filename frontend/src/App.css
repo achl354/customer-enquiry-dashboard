@@ -299,25 +299,32 @@
   margin-bottom: clamp(10px, 2vh, 22px);
 }
 
+.overview-separator {
+  font-size: 21px;
+  color: var(--text-muted);
+}
+
 /* A mailbox address has no spaces to wrap at, so without overflow-wrap a
    narrow column doesn't shrink it — it silently gets clipped past the
    container edge instead (worse than overflowing, since there's no
    scrollbar to reveal the missing part either). */
 .overview-mailbox {
-  font-size: 13px;
+  font-size: 21px;
+  font-weight: 600;
   color: var(--text-muted);
   min-width: 0;
   overflow-wrap: break-word;
 }
 
-/* Stat tiles — a fixed 3-column grid (we always render exactly 6 tiles) so
-   they land as two even rows instead of auto-fit wrapping an orphan 6th
-   tile onto its own near-empty row. */
+/* Primary stat row — the 3 headline numbers (Total enquiries, Open,
+   Urgent & open). Fixed 3-column grid divides evenly with no orphan gap;
+   below ~760px it drops straight to 1 column rather than stepping
+   through 2 (3 tiles into 2 columns just recreates the same orphan). */
 .stat-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: clamp(8px, 1.2vh, 14px);
-  margin-bottom: clamp(12px, 2vh, 28px);
+  margin-bottom: clamp(8px, 1.2vh, 14px);
   /* Unlike the bar/line charts below, a stat tile's content (an icon,
      label, and one number) doesn't get more useful at 800px+ wide — on an
      ultra-wide monitor this stopped it from stretching into a near-empty
@@ -325,14 +332,26 @@
   max-width: 1600px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 760px) {
   .stat-grid {
-    grid-template-columns: repeat(2, 1fr);
+    grid-template-columns: 1fr;
   }
 }
 
+/* Secondary stat row — Avg. resolution time and Low-confidence. Same
+   width as the primary row but deliberately quieter (see .stat-tile-quiet
+   below) so it reads as "also worth knowing," not a second bank of
+   equally-weighted headline tiles. */
+.stat-grid-secondary {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: clamp(6px, 1vh, 10px);
+  margin-bottom: clamp(12px, 2vh, 28px);
+  max-width: 1600px;
+}
+
 @media (max-width: 560px) {
-  .stat-grid {
+  .stat-grid-secondary {
     grid-template-columns: 1fr;
   }
 }
@@ -456,11 +475,14 @@
 }
 
 .stat-tile .value {
-  font-size: 32px;
+  /* Proportional figures, not tabular — tabular-nums pads every digit to
+     the width of a "0", which looks loose on a big standalone number like
+     this. Reserve tabular-nums for columns of numbers that must align
+     vertically (table rows, axis ticks), not a single display value. */
+  font-size: 38px;
   font-weight: 700;
   letter-spacing: -0.01em;
   color: var(--text-primary);
-  font-variant-numeric: tabular-nums;
 }
 
 .stat-tile .value.critical {
@@ -470,7 +492,6 @@
 .stat-tile .trend {
   font-size: 12.5px;
   font-weight: 600;
-  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 
@@ -514,6 +535,32 @@
   .stat-tile-in {
     animation: none;
   }
+}
+
+/* Quiet variant for the secondary stat row — same card, deliberately
+   less loud: no hover lift/shadow, smaller type, no top accent bar (the
+   critical-red value color still carries the "needs attention" signal
+   without the extra chrome). */
+.stat-tile-quiet {
+  padding: clamp(8px, 1.2vh, 12px) 16px;
+  box-shadow: none;
+}
+
+.stat-tile-quiet:hover {
+  box-shadow: none;
+  transform: none;
+}
+
+.stat-tile-quiet .label {
+  font-size: 11px;
+}
+
+.stat-tile-quiet .value {
+  font-size: 22px;
+}
+
+.stat-tile-quiet.attention::before {
+  display: none;
 }
 
 /* Bar list chart */

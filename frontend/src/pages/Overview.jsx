@@ -125,7 +125,12 @@ export default function Overview() {
     <div>
       <div className="overview-header">
         <h2>Mailbox Overview</h2>
-        {mailbox && <span className="overview-mailbox">{mailbox}</span>}
+        {mailbox && (
+          <>
+            <span className="overview-separator">–</span>
+            <span className="overview-mailbox">{mailbox}</span>
+          </>
+        )}
       </div>
 
       <div className="stat-grid">
@@ -149,6 +154,7 @@ export default function Overview() {
             <div className="label">Open</div>
           </div>
           <div className="value">{openDisplay}</div>
+          <div className="draft-hint">as of now</div>
         </div>
         <Link
           to="/queue?priority=URGENT"
@@ -161,7 +167,10 @@ export default function Overview() {
           </div>
           <div className={`value ${stats.urgentOpen > 0 ? 'critical' : ''}`}>{urgentDisplay}</div>
         </Link>
-        <Link to="/queue?status=RESOLVED" className="stat-tile stat-tile-in stat-tile-link" style={{ animationDelay: '180ms' }}>
+      </div>
+
+      <div className="stat-grid-secondary">
+        <Link to="/queue?status=RESOLVED" className="stat-tile stat-tile-in stat-tile-quiet stat-tile-link" style={{ animationDelay: '180ms' }}>
           <div className="stat-tile-header">
             <IconClock className="stat-icon" />
             <div className="label">Avg. resolution time</div>
@@ -179,7 +188,7 @@ export default function Overview() {
         </Link>
         <Link
           to="/queue?lowConfidence=true"
-          className={`stat-tile stat-tile-in stat-tile-link${stats.lowConfidenceCount > 0 ? ' attention' : ''}`}
+          className={`stat-tile stat-tile-in stat-tile-quiet stat-tile-link${stats.lowConfidenceCount > 0 ? ' attention' : ''}`}
           style={{ animationDelay: '240ms' }}
         >
           <div className="stat-tile-header">

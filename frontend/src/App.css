@@ -1023,6 +1023,22 @@
   opacity: 0.9;
 }
 
+.outlook-link {
+  padding: 7px 14px;
+  border-radius: 6px;
+  border: 1px solid var(--brand-navy);
+  background: var(--brand-navy);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.outlook-link:hover {
+  opacity: 0.9;
+}
+
 .draft-hint {
   font-size: 12px;
   color: var(--text-muted);

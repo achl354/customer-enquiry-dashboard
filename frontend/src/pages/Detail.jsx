@@ -240,6 +240,16 @@ export default function Detail() {
                 )}
               </div>
             )}
+            {enquiry.webLink && (
+              <div className="draft-actions" style={{ marginTop: 12 }}>
+                <a href={enquiry.webLink} target="_blank" rel="noreferrer" className="outlook-link">
+                  Open in Outlook
+                </a>
+                <span className="draft-hint">
+                  {enquiry.draftReply ? 'Paste the draft above and send from the original message.' : 'Reply directly from the original message.'}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 

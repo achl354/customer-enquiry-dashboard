@@ -113,11 +113,12 @@ export default function Overview() {
 
   const hasEnoughResolved = stats.resolvedCount >= MIN_RESOLVED_SAMPLE;
 
-  // "Total enquiries" is an unbounded running count since this system
-  // started tracking the mailbox, not a weekly/monthly figure — without
-  // this it reads as if it might be either.
-  const sinceDate = stats.earliestReceivedAt
-    ? new Date(stats.earliestReceivedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+  // "Total enquiries" counts from a fixed reporting start date (backend
+  // constant, not the mailbox's actual first-ever message) — without a
+  // caption showing that date it reads as if it might be a weekly/monthly
+  // figure instead.
+  const sinceDate = stats.totalSinceDate
+    ? new Date(stats.totalSinceDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
     : null;
 
   return (
@@ -138,7 +139,7 @@ export default function Overview() {
             </div>
             <Sparkline values={sparklineValues} />
           </div>
-          {sinceDate && <div className="draft-hint">All-time · since {sinceDate}</div>}
+          {sinceDate && <div className="draft-hint">Since {sinceDate}</div>}
         </div>
         <div className="stat-tile stat-tile-in" style={{ animationDelay: '60ms' }}>
           <div className="stat-tile-header">

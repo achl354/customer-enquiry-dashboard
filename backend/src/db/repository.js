@@ -323,11 +323,12 @@ const oldestOpenStmt = db.prepare(
 const urgentOpenStmt = db.prepare(
   `SELECT COUNT(*) as c FROM enquiries WHERE priority = 'URGENT' AND status NOT IN (${CLOSED_STATUS_SQL})`
 );
-const totalStmt = db.prepare('SELECT COUNT(*) as c FROM enquiries');
-// Gives "Total enquiries" a time bound — plain count with no context reads
-// as if it might be a weekly/monthly figure, when it's actually an
-// unbounded running total since this system started tracking the mailbox.
-const earliestReceivedAtStmt = db.prepare('SELECT MIN(received_at) as earliest FROM enquiries');
+// "Total enquiries" deliberately doesn't count from the very first row —
+// everything before this date is seed/backfill data from before the
+// mailbox was tracked for real, not a genuine enquiry volume figure.
+// Change this one constant to move the reporting start date.
+const TOTAL_SINCE = '2026-07-01T00:00:00.000Z';
+const totalStmt = db.prepare(`SELECT COUNT(*) as c FROM enquiries WHERE received_at >= '${TOTAL_SINCE}'`);
 const lowConfidenceCountStmt = db.prepare(
   `SELECT COUNT(*) as c FROM enquiries WHERE classified_by = 'ai' AND confidence < ${LOW_CONFIDENCE_THRESHOLD}`
 );
@@ -371,7 +372,6 @@ function overviewStats() {
   const oldestOpen = oldestOpenStmt.get();
   const urgentOpen = urgentOpenStmt.get().c;
   const total = totalStmt.get().c;
-  const earliestReceivedAt = earliestReceivedAtStmt.get().earliest;
   const lowConfidenceCount = lowConfidenceCountStmt.get().c;
 
   const resolutionStats = resolutionStatsStmt.get();
@@ -404,7 +404,7 @@ function overviewStats() {
 
   return {
     total,
-    earliestReceivedAt,
+    totalSinceDate: TOTAL_SINCE,
     openCount,
     urgentOpen,
     byCategory: Object.fromEntries(byCategory.map((r) => [r.category, r.count])),

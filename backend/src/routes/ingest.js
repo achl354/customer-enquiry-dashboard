@@ -5,7 +5,11 @@ const aiClassifier = require('../ai/classifier');
 const router = express.Router();
 
 router.get('/status', (req, res) => {
-  res.json({ graphConfigured: isGraphConfigured(), aiConfigured: aiClassifier.isConfigured() });
+  res.json({
+    graphConfigured: isGraphConfigured(),
+    aiConfigured: aiClassifier.isConfigured(),
+    mailbox: process.env.MAILBOX || null,
+  });
 });
 
 router.post('/run', async (req, res) => {

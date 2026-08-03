@@ -900,6 +900,14 @@
   align-items: start;
 }
 
+/* Grid items default to min-width: auto, so wide inline content (e.g. a
+   crowded .draft-actions row) refuses to shrink to its column's actual
+   track width and forces the whole grid — and the page — wider than the
+   viewport instead. Same overflow bug class as .main/.stat-grid elsewhere. */
+.detail-grid > div {
+  min-width: 0;
+}
+
 @media (max-width: 860px) {
   .detail-grid {
     grid-template-columns: 1fr;
@@ -1012,7 +1020,8 @@
 .draft-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  flex-wrap: wrap;
+  gap: 8px 12px;
   margin-top: 10px;
 }
 

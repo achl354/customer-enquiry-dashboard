@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getOverviewStats } from '../api';
+import { getOverviewStats, getIngestStatus } from '../api';
 import { BarList } from '../components/BarList';
 import { TrendChart } from '../components/TrendChart';
 import { Sparkline } from '../components/Sparkline';
@@ -40,12 +40,19 @@ const STATUS_ORDER = ['NEW', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER', 'RESOLVED', '
 export default function Overview() {
   const [stats, setStats] = useState(null);
   const [error, setError] = useState(null);
+  const [mailbox, setMailbox] = useState(null);
 
   useEffect(() => {
     const load = () => getOverviewStats().then(setStats).catch((e) => setError(e.message));
     load();
     const interval = setInterval(load, STATS_REFRESH_MS);
     return () => clearInterval(interval);
+  }, []);
+
+  // One-time — the mailbox address is static config, not something that
+  // changes while the page is open, unlike stats.
+  useEffect(() => {
+    getIngestStatus().then((s) => setMailbox(s.mailbox)).catch(() => {});
   }, []);
 
   // Hooks must run unconditionally, so these all sit above the
@@ -117,7 +124,7 @@ export default function Overview() {
 
   return (
     <div>
-      <h2>Mailbox overview</h2>
+      <h2>Mailbox Overview{mailbox ? ` - ${mailbox}` : ''}</h2>
 
       <div className="stat-grid">
         <div className="stat-tile stat-tile-in" style={{ animationDelay: '0ms' }}>

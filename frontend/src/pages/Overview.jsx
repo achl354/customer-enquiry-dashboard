@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { getOverviewStats, getIngestStatus } from '../api';
 import { BarList } from '../components/BarList';
-import { TrendChart } from '../components/TrendChart';
+import { DualTrendChart } from '../components/DualTrendChart';
 import { OverviewSkeleton } from '../components/Skeletons';
 import { IconLayers, IconInbox, IconAlertTriangle, IconClock, IconEye } from '../components/Icons';
 import { categoryLabel, statusLabel } from '../taxonomy';
@@ -46,6 +46,22 @@ const AGING_COLORS = {
 // Below this many resolved enquiries, an average is more noise than signal
 // — showing "14.3h" from 2 data points reads as precise when it isn't.
 const MIN_RESOLVED_SAMPLE = 5;
+
+// Same colors these two concepts already use elsewhere on this page (New =
+// series-1, Resolved = status-good) — reused here rather than picked fresh,
+// so "received" and "resolved" read the same way in every chart.
+const RECEIVED_SERIES = { key: 'received', label: 'Received', color: 'var(--series-1)' };
+const RESOLVED_SERIES = { key: 'resolved', label: 'Resolved', color: 'var(--status-good)' };
+const RECEIVED_CUMULATIVE_SERIES = { key: 'receivedCumulative', label: 'Received', color: 'var(--series-1)' };
+const RESOLVED_CUMULATIVE_SERIES = { key: 'resolvedCumulative', label: 'Resolved', color: 'var(--status-good)' };
+
+function formatDay(d) {
+  return new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function formatWeekStart(d) {
+  return `Wk of ${new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
+}
 
 const STATUS_ORDER = ['NEW', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER', 'RESOLVED', 'IGNORED', 'REMOVED', 'DISMISSED'];
 
@@ -221,8 +237,25 @@ export default function Overview() {
         </div>
 
         <div className="panel">
-          <h3>Volume, last 30 days</h3>
-          <TrendChart data={stats.dailyVolume} />
+          <h3>Daily volume: received vs. resolved</h3>
+          <DualTrendChart
+            data={stats.dailyFlow}
+            xKey="date"
+            seriesA={RECEIVED_SERIES}
+            seriesB={RESOLVED_SERIES}
+            xFormat={formatDay}
+          />
+        </div>
+
+        <div className="panel">
+          <h3>Weekly, accumulated (last 12 weeks)</h3>
+          <DualTrendChart
+            data={stats.weeklyFlow}
+            xKey="weekStart"
+            seriesA={RECEIVED_CUMULATIVE_SERIES}
+            seriesB={RESOLVED_CUMULATIVE_SERIES}
+            xFormat={formatWeekStart}
+          />
         </div>
       </div>
 

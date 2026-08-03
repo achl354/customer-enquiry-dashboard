@@ -369,9 +369,67 @@ const agingRowsStmt = db.prepare(
    WHERE status NOT IN (${CLOSED_STATUS_SQL})
    GROUP BY bucket`
 );
-const dailyRowsStmt = db.prepare(
+const dailyReceivedRowsStmt = db.prepare(
   "SELECT date(received_at) as day, COUNT(*) as count FROM enquiries WHERE received_at >= datetime('now', '-30 days') GROUP BY day"
 );
+// updated_at doubles as "when it became resolved" — same proxy the avg
+// resolution-time stat above already uses, so a day is counted as
+// "resolved" here on whichever day the status last changed to RESOLVED.
+const dailyResolvedRowsStmt = db.prepare(
+  "SELECT date(updated_at) as day, COUNT(*) as count FROM enquiries WHERE status = 'RESOLVED' AND updated_at >= datetime('now', '-30 days') GROUP BY day"
+);
+
+// Trailing-7-day buckets (not calendar weeks) so "this week" always means
+// "the last 7 days," regardless of what day it is today.
+const WEEKLY_BUCKET_COUNT = 12;
+const WEEKLY_WINDOW_DAYS = WEEKLY_BUCKET_COUNT * 7;
+const receivedInWindowStmt = db.prepare(
+  `SELECT received_at FROM enquiries WHERE received_at >= datetime('now', '-${WEEKLY_WINDOW_DAYS} days')`
+);
+const resolvedInWindowStmt = db.prepare(
+  `SELECT updated_at FROM enquiries WHERE status = 'RESOLVED' AND updated_at >= datetime('now', '-${WEEKLY_WINDOW_DAYS} days')`
+);
+
+// Cumulative received vs. cumulative resolved over the trailing 12 weeks,
+// both restarting from 0 at the window start — the gap between the two
+// lines shows whether *this window's* intake is outpacing resolution, not
+// the mailbox's all-time backlog (that's what the Open stat tile is for).
+function weeklyAccumulated() {
+  const receivedPerWeek = new Array(WEEKLY_BUCKET_COUNT).fill(0);
+  const resolvedPerWeek = new Array(WEEKLY_BUCKET_COUNT).fill(0);
+  const nowMs = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+
+  // Bucket 0 = oldest week in the window, last bucket = the most recent
+  // (current, possibly partial) 7 days.
+  const bucketIndexFor = (isoString) => {
+    const daysAgo = Math.floor((nowMs - new Date(isoString).getTime()) / dayMs);
+    const weeksAgo = Math.floor(daysAgo / 7);
+    return WEEKLY_BUCKET_COUNT - 1 - weeksAgo;
+  };
+
+  for (const row of receivedInWindowStmt.all()) {
+    const idx = bucketIndexFor(row.received_at);
+    if (idx >= 0 && idx < WEEKLY_BUCKET_COUNT) receivedPerWeek[idx] += 1;
+  }
+  for (const row of resolvedInWindowStmt.all()) {
+    const idx = bucketIndexFor(row.updated_at);
+    if (idx >= 0 && idx < WEEKLY_BUCKET_COUNT) resolvedPerWeek[idx] += 1;
+  }
+
+  let cumReceived = 0;
+  let cumResolved = 0;
+  return receivedPerWeek.map((_, i) => {
+    cumReceived += receivedPerWeek[i];
+    cumResolved += resolvedPerWeek[i];
+    const weekStart = new Date(nowMs - (WEEKLY_BUCKET_COUNT - i) * 7 * dayMs);
+    return {
+      weekStart: weekStart.toISOString().slice(0, 10),
+      receivedCumulative: cumReceived,
+      resolvedCumulative: cumResolved,
+    };
+  });
+}
 
 function overviewStats() {
   // Real week-over-week volume comparison (by received_at), not a fabricated
@@ -406,16 +464,23 @@ function overviewStats() {
     count: agingByBucket[bucket] || 0,
   }));
 
-  // Daily volume for the last 30 days, zero-filled — a single week-over-week
-  // delta hides spikes/seasonality (e.g. a burst of PO notices on one day).
-  const dailyRows = dailyRowsStmt.all();
-  const dailyByDate = Object.fromEntries(dailyRows.map((r) => [r.day, r.count]));
-  const dailyVolume = [];
+  // Daily received vs. resolved for the last 30 days, zero-filled — raw
+  // intake alone doesn't say whether it's being kept up with; this pairs
+  // it against the day things actually got resolved.
+  const dailyReceivedByDate = Object.fromEntries(dailyReceivedRowsStmt.all().map((r) => [r.day, r.count]));
+  const dailyResolvedByDate = Object.fromEntries(dailyResolvedRowsStmt.all().map((r) => [r.day, r.count]));
+  const dailyFlow = [];
   for (let i = 29; i >= 0; i -= 1) {
     const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
     const key = d.toISOString().slice(0, 10);
-    dailyVolume.push({ date: key, count: dailyByDate[key] || 0 });
+    dailyFlow.push({
+      date: key,
+      received: dailyReceivedByDate[key] || 0,
+      resolved: dailyResolvedByDate[key] || 0,
+    });
   }
+
+  const weeklyFlow = weeklyAccumulated();
 
   return {
     total,
@@ -427,7 +492,8 @@ function overviewStats() {
     byPriority: Object.fromEntries(byPriority.map((r) => [r.priority, r.count])),
     byFacility: byFacility.map((r) => ({ facility: r.facility, count: r.count })),
     agingBuckets,
-    dailyVolume,
+    dailyFlow,
+    weeklyFlow,
     oldestOpen: rowToEnquiry(oldestOpen),
     avgResolutionHours,
     resolvedCount: resolutionStats.count,

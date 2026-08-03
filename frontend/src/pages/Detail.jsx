@@ -217,9 +217,6 @@ export default function Detail() {
                 />
                 <div className="draft-actions">
                   <button type="button" onClick={handleCopyDraft}>{copied ? 'Copied!' : 'Copy to clipboard'}</button>
-                  {replyMailto && (
-                    <a href={replyMailto} className="outlook-link">Reply via email app</a>
-                  )}
                   <span className="draft-hint">Review before sending — edit freely, this is a starting point.</span>
                 </div>
               </>
@@ -237,15 +234,13 @@ export default function Detail() {
                 )}
               </div>
             )}
-            {enquiry.webLink && (
+            {replyMailto && (
               <div className="draft-actions" style={{ marginTop: 12 }}>
-                <a href={enquiry.webLink} target="_blank" rel="noreferrer" className="outlook-link">
-                  Open in Outlook
-                </a>
+                <a href={replyMailto} className="outlook-link">Reply via email app</a>
                 <span className="draft-hint">
                   {enquiry.draftReply
-                    ? 'Opens the original thread in Outlook on the web — paste the draft above and send.'
-                    : 'Opens the original thread in Outlook on the web.'}
+                    ? 'Opens your email app with the draft above already filled in.'
+                    : 'Opens your email app addressed to the sender — generate a draft above to pre-fill the body too.'}
                 </span>
               </div>
             )}

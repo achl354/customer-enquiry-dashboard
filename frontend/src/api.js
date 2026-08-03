@@ -43,12 +43,12 @@ export function generateDraft(id) {
   return request(`/enquiries/${encodeURIComponent(id)}/draft`, { method: 'POST' });
 }
 
-export function getThreadHistory(id) {
-  return request(`/enquiries/${encodeURIComponent(id)}/thread`);
+export function getThreadHistory(id, options = {}) {
+  return request(`/enquiries/${encodeURIComponent(id)}/thread`, options);
 }
 
-export function getFullBody(id) {
-  return request(`/enquiries/${encodeURIComponent(id)}/body`);
+export function getFullBody(id, options = {}) {
+  return request(`/enquiries/${encodeURIComponent(id)}/body`, options);
 }
 
 // Returns a plain URL (not a fetch call) — the export button links to this

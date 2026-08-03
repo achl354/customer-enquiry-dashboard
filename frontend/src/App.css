@@ -919,6 +919,14 @@
   gap: 12px;
 }
 
+/* The full body/thread now load automatically rather than behind a click,
+   so a long message or a thread with many replies needs its own scroll
+   instead of pushing the rest of the page down indefinitely. */
+.scrollable {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
 .thread-message {
   background: var(--page-plane);
   border: 1px solid var(--border);

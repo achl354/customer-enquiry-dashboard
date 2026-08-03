@@ -37,13 +37,39 @@ export default function Detail() {
 
     // Same instance-reuse issue means a slow response for the *previous*
     // id could otherwise land after a faster response for the current one
-    // and overwrite it — cancel it instead of racing.
+    // and overwrite it — cancel it instead of racing. One shared controller
+    // covers the enquiry fetch and the two follow-up fetches below, so
+    // navigating away cancels all three at once.
     const controller = new AbortController();
     getEnquiry(id, { signal: controller.signal })
       .then((e) => {
         setEnquiry(e);
         setAssigneeDraft(e.assignedTo || '');
         setDraftText(e.draftReply || '');
+
+        // Both are Graph calls, not Claude — no AI cost either way, so
+        // there's no cost reason to gate these behind a click. Only fires
+        // for live-ingested mail (conversationId is unset for seed/demo
+        // data, which already has its full text in bodyPreview anyway).
+        if (e.conversationId) {
+          setFullBodyLoading(true);
+          getFullBody(id, { signal: controller.signal })
+            .then(({ body }) => setFullBody(body))
+            .catch((err) => {
+              if (err.name === 'AbortError') return;
+              setFullBodyError(err.message);
+            })
+            .finally(() => setFullBodyLoading(false));
+
+          setThreadLoading(true);
+          getThreadHistory(id, { signal: controller.signal })
+            .then(({ messages }) => setThreadMessages(messages))
+            .catch((err) => {
+              if (err.name === 'AbortError') return;
+              setThreadError(err.message);
+            })
+            .finally(() => setThreadLoading(false));
+        }
       })
       .catch((e) => {
         if (e.name === 'AbortError') return;
@@ -74,32 +100,6 @@ export default function Detail() {
       setDraftError(e.message);
     } finally {
       setGenerating(false);
-    }
-  }
-
-  async function handleShowFullBody() {
-    setFullBodyLoading(true);
-    setFullBodyError(null);
-    try {
-      const { body } = await getFullBody(id);
-      setFullBody(body);
-    } catch (e) {
-      setFullBodyError(e.message);
-    } finally {
-      setFullBodyLoading(false);
-    }
-  }
-
-  async function handleShowThread() {
-    setThreadLoading(true);
-    setThreadError(null);
-    try {
-      const { messages } = await getThreadHistory(id);
-      setThreadMessages(messages);
-    } catch (e) {
-      setThreadError(e.message);
-    } finally {
-      setThreadLoading(false);
     }
   }
 
@@ -149,39 +149,25 @@ export default function Detail() {
         <div>
           <div className="panel">
             <h3>Email content</h3>
-            <div className="email-body">{fullBody ?? enquiry.bodyPreview ?? '(no preview available)'}</div>
-            {enquiry.conversationId && fullBody === null && (
-              <div className="draft-actions">
-                <button type="button" onClick={handleShowFullBody} disabled={fullBodyLoading}>
-                  {fullBodyLoading ? 'Loading…' : 'Show full email'}
-                </button>
-                {fullBodyError ? (
-                  <span className="draft-hint" style={{ color: 'var(--status-critical)' }}>{fullBodyError}</span>
-                ) : (
-                  <span className="draft-hint">The text above is a preview — fetched from Outlook on demand, not loaded automatically.</span>
-                )}
-              </div>
+            <div className="email-body scrollable">{fullBody ?? enquiry.bodyPreview ?? '(no preview available)'}</div>
+            {fullBodyLoading && <p className="draft-hint" style={{ margin: '8px 0 0' }}>Loading full email…</p>}
+            {fullBodyError && (
+              <p className="draft-hint" style={{ margin: '8px 0 0', color: 'var(--status-critical)' }}>{fullBodyError}</p>
             )}
           </div>
 
           {enquiry.conversationId && (
             <div className="panel">
               <h3>Email thread</h3>
-              {threadMessages === null ? (
-                <div className="draft-actions">
-                  <button type="button" onClick={handleShowThread} disabled={threadLoading}>
-                    {threadLoading ? 'Loading…' : 'Show previous replies'}
-                  </button>
-                  {threadError ? (
-                    <span className="draft-hint" style={{ color: 'var(--status-critical)' }}>{threadError}</span>
-                  ) : (
-                    <span className="draft-hint">Fetched from Outlook on demand — not loaded automatically.</span>
-                  )}
-                </div>
-              ) : threadMessages.length === 0 ? (
+              {threadLoading && <p className="draft-hint" style={{ margin: 0 }}>Loading previous replies…</p>}
+              {threadError && (
+                <p className="draft-hint" style={{ margin: 0, color: 'var(--status-critical)' }}>{threadError}</p>
+              )}
+              {threadMessages !== null && threadMessages.length === 0 && (
                 <p className="draft-hint" style={{ margin: 0 }}>No other messages found in this thread.</p>
-              ) : (
-                <div className="thread-list">
+              )}
+              {threadMessages !== null && threadMessages.length > 0 && (
+                <div className="thread-list scrollable">
                   {threadMessages.map((m, i) => (
                     <div className="thread-message" key={i}>
                       <div className="thread-message-meta">

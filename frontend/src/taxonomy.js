@@ -33,6 +33,9 @@ export const STATUS_LABELS = {
   // category — kept distinct from Resolved since disappearing isn't the
   // same confirmation of being handled.
   REMOVED: 'Removed from mailbox',
+  // Staff clicked "Delete" on the Detail page — a dashboard-only hide,
+  // unlike every other status here which is inferred from Outlook.
+  DISMISSED: 'Dismissed',
 };
 
 export const STATUS_OPTIONS = Object.keys(STATUS_LABELS);

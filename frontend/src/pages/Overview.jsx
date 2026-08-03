@@ -26,6 +26,10 @@ const STATUS_COLORS = {
   RESOLVED: 'var(--status-good)',
   IGNORED: 'var(--text-muted)',
   REMOVED: 'var(--series-5)',
+  // Staff-initiated "Delete" from the Detail page — see the DISMISSED
+  // comment in backend/src/db/repository.js. series-4 validated CVD-safe
+  // against every other color in this set.
+  DISMISSED: 'var(--series-4)',
 };
 
 // A green -> amber -> red escalating-risk ramp, reading left to right as
@@ -43,7 +47,7 @@ const AGING_COLORS = {
 // — showing "14.3h" from 2 data points reads as precise when it isn't.
 const MIN_RESOLVED_SAMPLE = 5;
 
-const STATUS_ORDER = ['NEW', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER', 'RESOLVED', 'IGNORED', 'REMOVED'];
+const STATUS_ORDER = ['NEW', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER', 'RESOLVED', 'IGNORED', 'REMOVED', 'DISMISSED'];
 
 export default function Overview() {
   const [stats, setStats] = useState(null);

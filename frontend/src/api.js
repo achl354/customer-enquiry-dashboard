@@ -44,6 +44,17 @@ export function getFullBody(id, options = {}) {
   return request(`/enquiries/${encodeURIComponent(id)}/body`, options);
 }
 
+export function updateCategory(id, category) {
+  return request(`/enquiries/${encodeURIComponent(id)}/category`, {
+    method: 'PATCH',
+    body: JSON.stringify({ category }),
+  });
+}
+
+export function deleteEnquiry(id) {
+  return request(`/enquiries/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
 // Returns a plain URL (not a fetch call) — the export button links to this
 // directly so the browser handles the file download/filename itself via
 // the response's Content-Disposition header.

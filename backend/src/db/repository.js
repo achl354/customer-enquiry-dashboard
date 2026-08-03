@@ -51,7 +51,7 @@ function statusForMissingMessage(confirmedMissing) {
 // advance an enquiry forward, never undo a status staff already set
 // themselves — e.g. a stale/old reply shouldn't demote a RESOLVED enquiry
 // back to WAITING_ON_CUSTOMER.
-const STATUS_RANK = { NEW: 0, IN_PROGRESS: 1, WAITING_ON_CUSTOMER: 2, RESOLVED: 3, IGNORED: 3, REMOVED: 3 };
+const STATUS_RANK = { NEW: 0, IN_PROGRESS: 1, WAITING_ON_CUSTOMER: 2, RESOLVED: 3, IGNORED: 3, REMOVED: 3, DISMISSED: 3 };
 
 // Terminal statuses — excluded from every "open enquiries" query below.
 // REMOVED means the message was deleted/purged from the mailbox (observed
@@ -60,7 +60,16 @@ const STATUS_RANK = { NEW: 0, IN_PROGRESS: 1, WAITING_ON_CUSTOMER: 2, RESOLVED: 
 // distinct from RESOLVED rather than folded into it, since deletion doesn't
 // confirm the enquiry was actually handled, just that nothing further will
 // ever be seen for it.
-const CLOSED_STATUSES = ['RESOLVED', 'IGNORED', 'REMOVED'];
+//
+// DISMISSED is the odd one out here: RESOLVED/IGNORED/REMOVED are all
+// inferred from something observed in Outlook (a flag, a category tag, the
+// message disappearing) — never set directly by this app. DISMISSED is the
+// opposite: it's ONLY ever set by staff clicking "Delete" on the Detail
+// page (see routes/enquiries.js), a dashboard-native "hide this from my
+// queue" with no Outlook-side signal behind it at all. Kept as its own
+// status rather than reusing IGNORED/REMOVED specifically so those two
+// keep meaning exactly what their sync logic says they mean.
+const CLOSED_STATUSES = ['RESOLVED', 'IGNORED', 'REMOVED', 'DISMISSED'];
 const CLOSED_STATUS_SQL = CLOSED_STATUSES.map((s) => `'${s}'`).join(', ');
 
 // A reply/forward was found in Sent Items for this enquiry's conversation.
@@ -253,7 +262,13 @@ function getEnquiry(id) {
   return rowToEnquiry(row);
 }
 
-const UPDATE_COLUMNS = { status: 'status', draftReply: 'draft_reply' };
+const UPDATE_COLUMNS = {
+  status: 'status',
+  draftReply: 'draft_reply',
+  category: 'category',
+  classifiedBy: 'classified_by',
+  confidence: 'confidence',
+};
 
 function updateEnquiry(id, updates) {
   const sets = [];

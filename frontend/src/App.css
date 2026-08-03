@@ -991,7 +991,11 @@
 .badge.status-waiting_on_customer { color: var(--text-secondary); background: var(--gridline); }
 .badge.status-resolved { color: var(--success-text); background: color-mix(in srgb, var(--status-good) 14%, transparent); }
 .badge.status-ignored { color: var(--text-muted); background: var(--gridline); }
-.badge.status-removed { color: var(--accent-gold); background: color-mix(in srgb, var(--accent-gold) 14%, transparent); }
+/* Was --accent-gold, which index.css itself reserves for trend indicators
+   only, never a data series/status — same fix already applied to this
+   status's bar-chart color on Overview. */
+.badge.status-removed { color: var(--series-5); background: color-mix(in srgb, var(--series-5) 14%, transparent); }
+.badge.status-dismissed { color: var(--series-4); background: color-mix(in srgb, var(--series-4) 14%, transparent); }
 
 .category-pill {
   font-size: 12px;
@@ -1170,6 +1174,25 @@
   opacity: 0.9;
 }
 
+/* A quieter, outline-only treatment rather than a solid alarming red fill
+   — this is a reversible hide-from-queue, not permanent data loss, so it
+   shouldn't read as scary as a real destructive action. */
+.draft-actions button.danger-btn {
+  background: transparent;
+  border-color: var(--status-critical);
+  color: var(--status-critical);
+}
+
+.draft-actions button.danger-btn:hover {
+  background: color-mix(in srgb, var(--status-critical) 10%, transparent);
+  opacity: 1;
+}
+
+.draft-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .outlook-link {
   padding: 7px 14px;
   border-radius: 6px;
@@ -1203,6 +1226,21 @@
   color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.03em;
+}
+
+.control-row select {
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface-1);
+  color: var(--text-primary);
+  font-size: 13px;
+  align-self: flex-start;
+}
+
+.control-row select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 .back-link {

@@ -2,6 +2,7 @@ const express = require('express');
 const repo = require('../db/repository');
 const aiClassifier = require('../ai/classifier');
 const graphClient = require('../graph/client');
+const { CATEGORIES } = require('../triage/classify');
 
 const router = express.Router();
 
@@ -184,6 +185,36 @@ router.get('/:id/body', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
+});
+
+// Manual recategorization — the classifier (AI or rules) got it wrong.
+// Marked classifiedBy: 'manual' with confidence cleared so the Detail page
+// doesn't keep showing a stale "Classified by Claude — 92% confidence"
+// line for a category a human actually chose.
+router.patch('/:id/category', (req, res) => {
+  const existing = repo.getEnquiry(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Enquiry not found' });
+
+  const { category } = req.body;
+  if (!CATEGORIES.includes(category)) {
+    return res.status(400).json({ error: `Invalid category: ${category}` });
+  }
+
+  const updated = repo.updateEnquiry(req.params.id, { category, classifiedBy: 'manual', confidence: null });
+  res.json(updated);
+});
+
+// "Delete" from the dashboard's perspective — see the DISMISSED comment in
+// db/repository.js for why this sets a dedicated status rather than
+// reusing RESOLVED/IGNORED/REMOVED (all three are Outlook-sync-only
+// elsewhere in this app). Not a real DELETE FROM — these are real customer
+// emails, so nothing here touches the row itself or the actual mailbox.
+router.delete('/:id', (req, res) => {
+  const existing = repo.getEnquiry(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Enquiry not found' });
+
+  const updated = repo.updateEnquiry(req.params.id, { status: 'DISMISSED' });
+  res.json(updated);
 });
 
 module.exports = router;

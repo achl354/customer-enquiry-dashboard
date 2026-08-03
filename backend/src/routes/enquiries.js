@@ -17,12 +17,13 @@ function parseNonNegativeInt(value) {
 }
 
 router.get('/', (req, res) => {
-  const { category, priority, status, search, sort, order, limit, offset } = req.query;
+  const { category, priority, status, search, lowConfidence, sort, order, limit, offset } = req.query;
   const result = repo.listEnquiries({
     category: category || undefined,
     priority: priority || undefined,
     status: status || undefined,
     search: search || undefined,
+    lowConfidence: lowConfidence === 'true' || lowConfidence === '1',
     sort: sort || undefined,
     order: order || undefined,
     limit: parseNonNegativeInt(limit),
@@ -58,12 +59,13 @@ function csvField(value) {
 // reporting rather than working the queue itself, so drafts/body content
 // are deliberately left out in favour of a lean, reportable column set.
 router.get('/export', (req, res) => {
-  const { category, priority, status, search, sort, order } = req.query;
+  const { category, priority, status, search, lowConfidence, sort, order } = req.query;
   const items = repo.listEnquiriesForExport({
     category: category || undefined,
     priority: priority || undefined,
     status: status || undefined,
     search: search || undefined,
+    lowConfidence: lowConfidence === 'true' || lowConfidence === '1',
     sort: sort || undefined,
     order: order || undefined,
   });
@@ -175,6 +177,31 @@ router.get('/:id/thread', async (req, res) => {
   try {
     const messages = await graphClient.fetchConversationMessages(existing.conversationId);
     res.json({ messages });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Full email body, on demand — bodyPreview (stored at ingest time) is
+// Graph's own truncated preview, not the whole message. Same on-demand
+// pattern as /thread: fetched only when staff click to expand it, not
+// stored for every enquiry up front.
+router.get('/:id/body', async (req, res) => {
+  const existing = repo.getEnquiry(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Enquiry not found' });
+
+  // No conversationId is the same "this is seed/demo data" signal /thread
+  // uses — seed records never set one, real Graph-ingested mail always does.
+  if (!existing.conversationId) {
+    return res.status(400).json({ error: 'No full body available for this enquiry (seed/demo data — the preview shown is already the full text)' });
+  }
+  if (!graphClient.isConfigured()) {
+    return res.status(400).json({ error: 'Live mail sync is not configured (TENANT_ID/CLIENT_ID/CLIENT_SECRET/MAILBOX missing)' });
+  }
+
+  try {
+    const body = await graphClient.fetchFullBody(existing.graphMessageId);
+    res.json({ body });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

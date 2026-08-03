@@ -190,7 +190,12 @@ const SORT_COLUMNS = {
 
 // Shared by listEnquiries and the CSV export — both filter the same way,
 // the export just skips LIMIT/OFFSET to return every matching row.
-function buildWhereClause({ category, priority, status, search }) {
+// Same 0.5 threshold the Detail page uses to flag a classification as
+// "low confidence — worth a second look", kept in one place so the Overview
+// tile's count and this filter can never drift apart.
+const LOW_CONFIDENCE_THRESHOLD = 0.5;
+
+function buildWhereClause({ category, priority, status, search, lowConfidence }) {
   const clauses = [];
   const params = {};
 
@@ -206,6 +211,10 @@ function buildWhereClause({ category, priority, status, search }) {
     clauses.push('status = @status');
     params.status = status;
   }
+  if (lowConfidence) {
+    clauses.push("classified_by = 'ai' AND confidence < @lowConfidenceThreshold");
+    params.lowConfidenceThreshold = LOW_CONFIDENCE_THRESHOLD;
+  }
   if (search) {
     clauses.push(
       '(subject LIKE @search OR body_preview LIKE @search OR sender_email LIKE @search OR po_number LIKE @search OR facility LIKE @search OR assigned_to LIKE @search)'
@@ -216,8 +225,8 @@ function buildWhereClause({ category, priority, status, search }) {
   return { where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', params };
 }
 
-function listEnquiries({ category, priority, status, search, sort = 'receivedAt', order = 'desc', limit = 100, offset = 0 } = {}) {
-  const { where, params } = buildWhereClause({ category, priority, status, search });
+function listEnquiries({ category, priority, status, search, lowConfidence, sort = 'receivedAt', order = 'desc', limit = 100, offset = 0 } = {}) {
+  const { where, params } = buildWhereClause({ category, priority, status, search, lowConfidence });
   const sortCol = SORT_COLUMNS[sort] || 'received_at';
   const dir = order === 'asc' ? 'ASC' : 'DESC';
 
@@ -232,8 +241,8 @@ function listEnquiries({ category, priority, status, search, sort = 'receivedAt'
 
 // Same filters as listEnquiries, no pagination — used by CSV export, which
 // needs every matching row rather than one page of results.
-function listEnquiriesForExport({ category, priority, status, search, sort = 'receivedAt', order = 'desc' } = {}) {
-  const { where, params } = buildWhereClause({ category, priority, status, search });
+function listEnquiriesForExport({ category, priority, status, search, lowConfidence, sort = 'receivedAt', order = 'desc' } = {}) {
+  const { where, params } = buildWhereClause({ category, priority, status, search, lowConfidence });
   const sortCol = SORT_COLUMNS[sort] || 'received_at';
   const dir = order === 'asc' ? 'ASC' : 'DESC';
 
@@ -318,7 +327,9 @@ const urgentOpenStmt = db.prepare(
 );
 const totalStmt = db.prepare('SELECT COUNT(*) as c FROM enquiries');
 const byClassifiedByStmt = db.prepare('SELECT classified_by, COUNT(*) as count FROM enquiries GROUP BY classified_by');
-const lowConfidenceCountStmt = db.prepare("SELECT COUNT(*) as c FROM enquiries WHERE classified_by = 'ai' AND confidence < 0.5");
+const lowConfidenceCountStmt = db.prepare(
+  `SELECT COUNT(*) as c FROM enquiries WHERE classified_by = 'ai' AND confidence < ${LOW_CONFIDENCE_THRESHOLD}`
+);
 // AVG()/COUNT() in SQL instead of pulling every RESOLVED row into Node just
 // to reduce it to two numbers — this cost was growing unbounded as RESOLVED
 // enquiries accumulate over the dashboard's lifetime.

@@ -16,13 +16,13 @@ const SORTABLE_COLUMNS = [
 
 export default function Queue() {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [items, setItems] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const [filters, setFilters] = useState({ category: '', priority: '', status: '', search: '' });
+  const [filters, setFilters] = useState({ category: '', priority: '', status: '', search: '', lowConfidence: undefined });
   const [sort, setSort] = useState('receivedAt');
   const [order, setOrder] = useState('desc');
   const [page, setPage] = useState(0);
@@ -35,6 +35,7 @@ export default function Queue() {
       priority: searchParams.get('priority') || '',
       status: searchParams.get('status') || '',
       search: searchParams.get('search') || '',
+      lowConfidence: searchParams.get('lowConfidence') === 'true' ? true : undefined,
     });
     setPage(0);
   }, [searchParams]);
@@ -69,6 +70,16 @@ export default function Queue() {
   const update = (key) => (e) => {
     setPage(0);
     setFilters((f) => ({ ...f, [key]: e.target.value }));
+  };
+
+  // No dropdown covers this one (unlike category/priority/status), so it
+  // needs its own visible indicator + a way to clear it — otherwise landing
+  // here from the Overview tile leaves no sign the list is filtered at all.
+  const clearLowConfidence = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('lowConfidence');
+    setSearchParams(next);
+    setPage(0);
   };
 
   const toggleSort = (key) => {
@@ -114,6 +125,12 @@ export default function Queue() {
           value={filters.search}
           onChange={update('search')}
         />
+        {filters.lowConfidence && (
+          <span className="filter-chip">
+            Low confidence
+            <button type="button" onClick={clearLowConfidence} aria-label="Clear low-confidence filter">×</button>
+          </span>
+        )}
         <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{total} result{total === 1 ? '' : 's'}</span>
         <a
           className="export-link"

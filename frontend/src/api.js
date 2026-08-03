@@ -47,6 +47,10 @@ export function getThreadHistory(id) {
   return request(`/enquiries/${encodeURIComponent(id)}/thread`);
 }
 
+export function getFullBody(id) {
+  return request(`/enquiries/${encodeURIComponent(id)}/body`);
+}
+
 // Returns a plain URL (not a fetch call) — the export button links to this
 // directly so the browser handles the file download/filename itself via
 // the response's Content-Disposition header.

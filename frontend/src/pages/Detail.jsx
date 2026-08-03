@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { getEnquiry, updateEnquiry, generateDraft, getThreadHistory } from '../api';
+import { getEnquiry, updateEnquiry, generateDraft, getThreadHistory, getFullBody } from '../api';
 import { PriorityBadge, StatusBadge, CategoryPill } from '../components/Badges';
 
 export default function Detail() {
@@ -17,6 +17,9 @@ export default function Detail() {
   const [threadMessages, setThreadMessages] = useState(null);
   const [threadLoading, setThreadLoading] = useState(false);
   const [threadError, setThreadError] = useState(null);
+  const [fullBody, setFullBody] = useState(null);
+  const [fullBodyLoading, setFullBodyLoading] = useState(false);
+  const [fullBodyError, setFullBodyError] = useState(null);
 
   useEffect(() => {
     // Reset per-enquiry UI state on navigation between enquiries (this
@@ -28,6 +31,8 @@ export default function Detail() {
     setDraftEmpty(false);
     setThreadMessages(null);
     setThreadError(null);
+    setFullBody(null);
+    setFullBodyError(null);
     setCopied(false);
 
     // Same instance-reuse issue means a slow response for the *previous*
@@ -69,6 +74,19 @@ export default function Detail() {
       setDraftError(e.message);
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function handleShowFullBody() {
+    setFullBodyLoading(true);
+    setFullBodyError(null);
+    try {
+      const { body } = await getFullBody(id);
+      setFullBody(body);
+    } catch (e) {
+      setFullBodyError(e.message);
+    } finally {
+      setFullBodyLoading(false);
     }
   }
 
@@ -131,7 +149,19 @@ export default function Detail() {
         <div>
           <div className="panel">
             <h3>Email content</h3>
-            <div className="email-body">{enquiry.bodyPreview || '(no preview available)'}</div>
+            <div className="email-body">{fullBody ?? enquiry.bodyPreview ?? '(no preview available)'}</div>
+            {enquiry.conversationId && fullBody === null && (
+              <div className="draft-actions">
+                <button type="button" onClick={handleShowFullBody} disabled={fullBodyLoading}>
+                  {fullBodyLoading ? 'Loading…' : 'Show full email'}
+                </button>
+                {fullBodyError ? (
+                  <span className="draft-hint" style={{ color: 'var(--status-critical)' }}>{fullBodyError}</span>
+                ) : (
+                  <span className="draft-hint">The text above is a preview — fetched from Outlook on demand, not loaded automatically.</span>
+                )}
+              </div>
+            )}
           </div>
 
           {enquiry.conversationId && (

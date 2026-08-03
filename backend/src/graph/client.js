@@ -265,7 +265,12 @@ async function fetchConversationMessages(conversationId) {
   const token = await getAccessToken();
   const mailbox = encodeURIComponent(process.env.MAILBOX);
   const select = 'subject,from,toRecipients,receivedDateTime,sentDateTime,bodyPreview';
-  const url = `${GRAPH_BASE}/users/${mailbox}/messages?$filter=conversationId eq '${encodeURIComponent(escapeODataString(conversationId))}'&$select=${select}&$orderby=receivedDateTime asc&$top=25`;
+  // No $orderby here on purpose — combining a mailbox-wide $filter with
+  // $orderby on a different property is what Graph's "InefficientFilter"
+  // (400, "restriction or sort order is too complex") rejects in practice,
+  // even though each clause works fine alone. Sorting the (small, $top=25)
+  // result client-side avoids the combination entirely.
+  const url = `${GRAPH_BASE}/users/${mailbox}/messages?$filter=conversationId eq '${encodeURIComponent(escapeODataString(conversationId))}'&$select=${select}&$top=25`;
 
   const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok) {
@@ -273,13 +278,44 @@ async function fetchConversationMessages(conversationId) {
     throw new Error(`Graph API error ${res.status}: ${body}`);
   }
   const data = await res.json();
-  return (data.value || []).map((msg) => ({
-    senderName: msg.from?.emailAddress?.name || null,
-    senderEmail: msg.from?.emailAddress?.address || null,
-    recipients: (msg.toRecipients || []).map((r) => r.emailAddress?.address).filter(Boolean),
-    sentAt: msg.sentDateTime || msg.receivedDateTime,
-    bodyPreview: msg.bodyPreview || '',
-  }));
+  return (data.value || [])
+    .map((msg) => ({
+      senderName: msg.from?.emailAddress?.name || null,
+      senderEmail: msg.from?.emailAddress?.address || null,
+      recipients: (msg.toRecipients || []).map((r) => r.emailAddress?.address).filter(Boolean),
+      sentAt: msg.sentDateTime || msg.receivedDateTime,
+      bodyPreview: msg.bodyPreview || '',
+    }))
+    .sort((a, b) => new Date(a.sentAt) - new Date(b.sentAt));
+}
+
+/**
+ * Fetch the full plain-text body of a single message, on demand — the
+ * bodyPreview stored at ingest time is Graph's own ~255-character truncated
+ * preview, not the full message, and fetching/storing the full body for
+ * every ingested email upfront would be wasted storage/Graph calls for
+ * enquiries nobody ever opens. Only called when staff click to expand one.
+ */
+async function fetchFullBody(graphMessageId) {
+  const token = await getAccessToken();
+  const mailbox = encodeURIComponent(process.env.MAILBOX);
+  const url = `${GRAPH_BASE}/users/${mailbox}/messages/${encodeURIComponent(graphMessageId)}?$select=body`;
+
+  const res = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      // Plain text instead of Graph's default HTML — this is only ever
+      // displayed as plain text, so asking Graph to convert it up front
+      // avoids needing to sanitize/render HTML on the frontend.
+      Prefer: 'outlook.body-content-type="text"',
+    },
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Graph API error ${res.status}: ${body}`);
+  }
+  const data = await res.json();
+  return data.body?.content || '';
 }
 
 module.exports = {
@@ -288,5 +324,6 @@ module.exports = {
   fetchMessageFlags,
   fetchReplyStatus,
   fetchConversationMessages,
+  fetchFullBody,
   toRawEmail,
 };

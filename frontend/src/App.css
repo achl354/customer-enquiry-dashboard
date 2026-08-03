@@ -375,6 +375,15 @@
   transform: translateY(-1px);
 }
 
+/* Some stat tiles are <Link>s (e.g. "Low-confidence") rather than plain
+   divs, so they drill into a pre-filtered queue view — reset anchor
+   defaults rather than restyling the whole tile differently. */
+.stat-tile-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+
 /* A slim top accent bar flags tiles worth a second look (urgent, low
    confidence) at a glance, without redesigning the whole card. */
 .stat-tile.attention::before {
@@ -633,6 +642,39 @@
 
 .filter-bar input[type='search'] {
   min-width: 220px;
+}
+
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--status-warning) 16%, transparent);
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.filter-chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.filter-chip button:hover {
+  background: rgba(0, 0, 0, 0.08);
+  color: var(--text-primary);
 }
 
 .export-link {

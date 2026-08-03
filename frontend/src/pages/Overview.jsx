@@ -170,13 +170,17 @@ export default function Overview() {
           </div>
           <div className="value">{aiClassifiedDisplay ?? 0}</div>
         </div>
-        <div className={`stat-tile stat-tile-in${stats.lowConfidenceCount > 0 ? ' attention' : ''}`} style={{ animationDelay: '300ms' }}>
+        <Link
+          to="/queue?lowConfidence=true"
+          className={`stat-tile stat-tile-in stat-tile-link${stats.lowConfidenceCount > 0 ? ' attention' : ''}`}
+          style={{ animationDelay: '300ms' }}
+        >
           <div className="stat-tile-header">
             <IconEye className="stat-icon" />
             <div className="label">Low-confidence (needs review)</div>
           </div>
           <div className={`value ${stats.lowConfidenceCount > 0 ? 'critical' : ''}`}>{lowConfidenceDisplay}</div>
-        </div>
+        </Link>
       </div>
 
       {stats.oldestOpen && (

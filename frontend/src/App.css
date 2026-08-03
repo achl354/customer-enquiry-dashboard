@@ -284,19 +284,29 @@
   font-size: 21px;
   font-weight: 700;
   letter-spacing: -0.01em;
-  margin: 0 0 clamp(10px, 2vh, 22px);
+  margin: 0;
   text-wrap: balance;
+}
+
+/* Keeps the title and mailbox address on one line where there's room;
+   flex-wrap lets the address drop to its own line on narrow screens
+   instead of forcing horizontal overflow. */
+.overview-header {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  column-gap: 10px;
+  margin-bottom: clamp(10px, 2vh, 22px);
 }
 
 /* A mailbox address has no spaces to wrap at, so without overflow-wrap a
    narrow column doesn't shrink it — it silently gets clipped past the
    container edge instead (worse than overflowing, since there's no
-   scrollbar to reveal the missing part either). Its own margins replace
-   the h2's bottom margin as the gap before the stat grid. */
+   scrollbar to reveal the missing part either). */
 .overview-mailbox {
   font-size: 13px;
   color: var(--text-muted);
-  margin: -6px 0 clamp(10px, 2vh, 22px);
+  min-width: 0;
   overflow-wrap: break-word;
 }
 

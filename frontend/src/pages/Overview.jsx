@@ -123,8 +123,10 @@ export default function Overview() {
 
   return (
     <div>
-      <h2>Mailbox Overview</h2>
-      {mailbox && <div className="overview-mailbox">{mailbox}</div>}
+      <div className="overview-header">
+        <h2>Mailbox Overview</h2>
+        {mailbox && <span className="overview-mailbox">{mailbox}</span>}
+      </div>
 
       <div className="stat-grid">
         <div className="stat-tile stat-tile-in" style={{ animationDelay: '0ms' }}>

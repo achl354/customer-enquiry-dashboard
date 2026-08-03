@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { listEnquiries, getExportUrl } from '../api';
 import { PriorityBadge, StatusBadge, CategoryPill } from '../components/Badges';
@@ -32,6 +32,31 @@ export default function Queue() {
   const [sort, setSort] = useState('receivedAt');
   const [order, setOrder] = useState('desc');
   const [page, setPage] = useState(0);
+
+  // Drives the .can-scroll-left/-right classes (see .table-scroll in
+  // App.css) so the edge-fade affordance only shows where there's
+  // actually more table to scroll to, instead of a permanent decoration.
+  const tableScrollRef = useRef(null);
+  const [scrollEdges, setScrollEdges] = useState({ left: false, right: false });
+
+  useEffect(() => {
+    const el = tableScrollRef.current;
+    if (!el) return;
+    const update = () => {
+      setScrollEdges({
+        left: el.scrollLeft > 0,
+        // -1px tolerance for subpixel rounding at the far-right edge.
+        right: el.scrollLeft + el.clientWidth < el.scrollWidth - 1,
+      });
+    };
+    update();
+    el.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    return () => {
+      el.removeEventListener('scroll', update);
+      window.removeEventListener('resize', update);
+    };
+  }, [items]);
 
   // Sidebar "quick filter" links (e.g. /queue?priority=URGENT) land here —
   // re-apply on every change so clicking one while already on this page works too.
@@ -104,7 +129,7 @@ export default function Queue() {
 
   return (
     <div>
-      <h2>Triage queue</h2>
+      <h2>All enquiries</h2>
 
       <div className="filter-bar">
         <select value={filters.category} onChange={update('category')}>
@@ -152,7 +177,10 @@ export default function Queue() {
 
       {!error && (loading === false || items.length > 0) && (
         <>
-          <div className="table-scroll">
+          <div
+            ref={tableScrollRef}
+            className={`table-scroll${scrollEdges.left ? ' can-scroll-left' : ''}${scrollEdges.right ? ' can-scroll-right' : ''}`}
+          >
           <table className="enquiry-table">
             <thead>
               <tr>

@@ -3,7 +3,6 @@ import { Link } from 'react-router-dom';
 import { getOverviewStats, getIngestStatus } from '../api';
 import { BarList } from '../components/BarList';
 import { TrendChart } from '../components/TrendChart';
-import { Sparkline } from '../components/Sparkline';
 import { OverviewSkeleton } from '../components/Skeletons';
 import { IconLayers, IconInbox, IconAlertTriangle, IconClock, IconEye } from '../components/Icons';
 import { categoryLabel, statusLabel } from '../taxonomy';
@@ -15,18 +14,27 @@ import { useCountUp } from '../hooks/useCountUp';
 // until the user navigated away and back) instead of just refreshing together.
 const STATS_REFRESH_MS = 60000;
 
+// WAITING_ON_CUSTOMER and IGNORED previously shared the same muted gray
+// (indistinguishable at a glance), and REMOVED used --accent-gold — a
+// token reserved elsewhere in this file for trend indicators only, never
+// a data series. series-7/series-5 are validated CVD-safe against their
+// neighbors here (see scripts/validate_palette.js in the dataviz skill).
 const STATUS_COLORS = {
   NEW: 'var(--series-1)',
   IN_PROGRESS: 'var(--status-warning)',
-  WAITING_ON_CUSTOMER: 'var(--text-muted)',
+  WAITING_ON_CUSTOMER: 'var(--series-7)',
   RESOLVED: 'var(--status-good)',
   IGNORED: 'var(--text-muted)',
-  REMOVED: 'var(--accent-gold)',
+  REMOVED: 'var(--series-5)',
 };
 
+// A green -> amber -> red escalating-risk ramp, reading left to right as
+// "how overdue." The 1-3d step is a paler tint of the same good-green
+// rather than an unrelated hue, so the story stays green -> red instead
+// of jumping through an unrelated color partway through.
 const AGING_COLORS = {
   '0-24h': 'var(--status-good)',
-  '1-3d': 'var(--series-1)',
+  '1-3d': 'color-mix(in srgb, var(--status-good) 55%, var(--surface-1))',
   '3-7d': 'var(--status-warning)',
   '7d+': 'var(--status-critical)',
 };
@@ -94,13 +102,6 @@ export default function Overview() {
     return stats.agingBuckets.map((b) => ({ key: b.bucket, value: b.count, label: b.bucket }));
   }, [stats]);
 
-  const sparklineValues = useMemo(() => {
-    // Real data only — the daily volume series is the one metric on this
-    // page with genuine history, so it's the only tile that gets a sparkline.
-    if (!stats) return [];
-    return stats.dailyVolume.slice(-14).map((d) => d.count);
-  }, [stats]);
-
   if (error) return <div className="error-state">Failed to load stats: {error}</div>;
   if (!stats) return <OverviewSkeleton />;
 
@@ -139,12 +140,9 @@ export default function Overview() {
             <IconLayers className="stat-icon" />
             <div className="label">Total enquiries</div>
           </div>
-          <div className="stat-tile-body">
-            <div className="value-row">
-              <div className="value">{totalDisplay}</div>
-              <div className={`trend ${trendDirection}`}>{trendText}</div>
-            </div>
-            <Sparkline values={sparklineValues} />
+          <div className="value-row">
+            <div className="value">{totalDisplay}</div>
+            <div className={`trend ${trendDirection}`}>{trendText}</div>
           </div>
           {sinceDate && <div className="draft-hint">Since {sinceDate}</div>}
         </div>

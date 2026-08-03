@@ -202,7 +202,11 @@
   align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 7px 10px;
+  /* No horizontal padding — .sidebar-status-row and .sidebar-refresh-btn
+     (same .sidebar-footer parent) have none of their own either, so all
+     three line up on one left edge instead of the toggle icons sitting
+     ~10px further right. */
+  padding: 7px 0;
   border: none;
   border-radius: 8px;
   background: transparent;
@@ -503,19 +507,6 @@
   margin-top: 6px;
 }
 
-.stat-tile-body {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.sparkline {
-  width: 72px;
-  height: 22px;
-  flex-shrink: 0;
-}
-
 @keyframes statTileIn {
   from {
     opacity: 0;
@@ -744,6 +735,29 @@
   min-width: 220px;
 }
 
+/* Below this width, native <select>s auto-size to their widest option
+   text (measured: 150/110/176px versus a ~250px-wide bar), so they can't
+   fit two per row and end up wrapping one-per-row at uneven, seemingly
+   accidental widths. Force a clean uniform stacked list instead. */
+@media (max-width: 640px) {
+  .filter-bar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .filter-bar select,
+  .filter-bar input,
+  .export-link {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .export-link {
+    margin-left: 0;
+    text-align: center;
+  }
+}
+
 .filter-chip {
   display: inline-flex;
   align-items: center;
@@ -802,8 +816,44 @@
    stretching to fit it (which was blowing out the layout viewport and
    making the sidebar/whole app render zoomed-out on mobile). */
 .table-scroll {
+  position: relative;
   overflow-x: auto;
   border-radius: var(--card-radius);
+}
+
+/* Scroll-shadow affordance: a soft edge fade that only appears where
+   there's more table to scroll to. The table's own background is opaque
+   and fills the scroll port edge-to-edge, so the classic background-only
+   fade trick would render invisible underneath it — these are separate
+   overlay layers instead, toggled by the .can-scroll-* classes Queue.jsx
+   sets from the container's actual scroll position. Without this, a badge
+   cut off mid-word at the edge (e.g. "Waiting on custom…") reads as a
+   rendering bug instead of "more content this way." */
+.table-scroll::before,
+.table-scroll::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 24px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.table-scroll::before {
+  left: 0;
+  background: linear-gradient(to right, color-mix(in srgb, var(--axis) 55%, transparent), transparent);
+}
+
+.table-scroll::after {
+  right: 0;
+  background: linear-gradient(to left, color-mix(in srgb, var(--axis) 55%, transparent), transparent);
+}
+
+.table-scroll.can-scroll-left::before,
+.table-scroll.can-scroll-right::after {
+  opacity: 1;
 }
 
 .enquiry-table {
@@ -825,7 +875,7 @@
   letter-spacing: 0.05em;
   color: var(--text-muted);
   background: color-mix(in srgb, var(--brand-navy) 4%, var(--surface-1));
-  padding: 12px 14px;
+  padding: 12px 12px;
   border-bottom: 2px solid var(--gridline);
   white-space: nowrap;
 }
@@ -876,7 +926,7 @@
 }
 
 .enquiry-table td {
-  padding: 10px 14px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--gridline);
   font-size: 13px;
   color: var(--text-secondary);
@@ -904,7 +954,10 @@
 .enquiry-table .subject-cell {
   color: var(--text-primary);
   font-weight: 500;
-  max-width: 320px;
+  /* Trimmed from 320px — reclaims room for the Status column's widest
+     badge ("Waiting on customer"), which was overflowing the table at
+     common desktop widths. */
+  max-width: 260px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

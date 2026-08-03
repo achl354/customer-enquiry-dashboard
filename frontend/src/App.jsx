@@ -8,7 +8,6 @@ import {
   IconGrid,
   IconInbox,
   IconAlertTriangle,
-  IconLayers,
   IconDot,
   IconSun,
   IconMoon,
@@ -115,7 +114,6 @@ function App() {
   }, [forceDesktop]);
 
   const urgentCount = stats?.urgentOpen ?? null;
-  const newCount = stats?.byStatus?.NEW ?? null;
 
   return (
     <BrowserRouter>
@@ -139,7 +137,7 @@ function App() {
             </NavLink>
             <NavLink to="/queue" className={({ isActive }) => (isActive ? 'active' : '')}>
               <IconInbox className="nav-icon" />
-              <span className="nav-label">Triage Queue</span>
+              <span className="nav-label">All Enquiries</span>
               {stats && <span className="nav-count">{stats.openCount}</span>}
             </NavLink>
 
@@ -150,11 +148,6 @@ function App() {
               {urgentCount !== null && (
                 <span className={`nav-count${urgentCount > 0 ? ' urgent' : ''}`}>{urgentCount}</span>
               )}
-            </Link>
-            <Link to="/queue?status=NEW" className="quick-filter-link">
-              <IconLayers className="nav-icon" />
-              <span className="nav-label">New / unactioned</span>
-              {newCount !== null && <span className="nav-count">{newCount}</span>}
             </Link>
           </div>
 

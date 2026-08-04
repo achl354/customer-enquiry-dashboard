@@ -105,8 +105,12 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 | `PATCH /api/enquiries/:id/category` | Manual recategorization (`status` has no direct-set endpoint at all — it's derived from Outlook, see "Status sync" below, with `DELETE` as the one dashboard-native exception) |
 | `DELETE /api/enquiries/:id` | Detail page's "Delete" — sets `DISMISSED`, doesn't touch the real mailbox |
 | `GET /api/enquiries/export` | CSV export — same filters as the list endpoint, no pagination. Lean reporting column set (no draft/body content) |
-| `GET /api/stats/overview` | Counts by category/status/priority/facility, aging buckets, open workload by assignee, daily/weekly volume since `TOTAL_SINCE`, avg resolution time (gated behind a minimum sample size) |
-| `GET /api/stats/resolution-trend?granularity=month\|quarter\|year` | Avg. resolution time rolled up by period, all-time — see "Resolution-time KPI trend" below |
+| `GET /api/stats/overview` | Counts by category/status/priority/facility, aging buckets, open workload by assignee, avg resolution time (gated behind a minimum sample size) |
+| `GET /api/stats/volume-trend?granularity=day\|week\|month\|quarter` | Received vs. resolved counts by period, since `TOTAL_SINCE` — see "KPI trend panels" below |
+| `GET /api/stats/resolution-trend?granularity=month\|quarter\|year&sla=<hours>` | Avg. resolution time + SLA compliance rate rolled up by period, all-time; `sla` defaults to 48 |
+| `GET /api/stats/first-response-trend?granularity=month\|quarter\|year` | Avg. time to first reply by period, all-time, forward-looking only (see "First response time") |
+| `GET /api/stats/resolution-by-priority` | Avg. resolution time per priority tier, all-time snapshot (no granularity) |
+| `GET /api/stats/backlog-trend?granularity=month\|quarter\|year` | Open-enquiry count at the end of each period — an approximation, see "Backlog trend" below |
 | `GET /api/ingest/status` | Whether live Graph polling and AI classification are configured |
 | `POST /api/ingest/run` | Manually trigger one poll cycle (Inbox only) |
 | `GET /api/ingest/folder-map?mailbox=<address>` | CSV of every mail folder, walked by id — see "Folder tree enumeration" below |
@@ -434,29 +438,69 @@ distinguishes "no resolved enquiries yet" from "N resolved, but timing
 data isn't available yet" (the latter is normal right after deploying this
 — it clears up as the backfill runs).
 
-## Resolution-time KPI trend (`/stats/resolution-trend`)
+## KPI trend panels (`/stats/volume-trend`, `/stats/resolution-trend`, `/stats/first-response-trend`, `/stats/resolution-by-priority`, `/stats/backlog-trend`)
 
-`GET /api/stats/resolution-trend?granularity=month|quarter|year` rolls the
-same `resolved_at`/`received_at` pair above up into a monthly/quarterly/
-annual average — the reporting view behind the Overview page's "Avg.
-resolution time by \<granularity\>" panel (a Month/Quarter/Year toggle over
-a bar per period). Returns `[{period, avgHours, count}]`, one row per
-period that has at least one `RESOLVED` row with a known `resolved_at`;
-periods with none simply don't appear (no zero-filling — unlike the daily
-chart, a KPI trend has no fixed window to fill gaps in). `period` is
-`"YYYY-MM"` for month (calendar). Quarter and year are **fiscal** (the AU
-financial year, 1 Jul – 30 Jun), not calendar — `period` is `"YYYY-FQn"`
-for quarter and `"YYYY"` for year, where `YYYY` is the calendar year the
-fiscal year *starts* in (e.g. `"2026"` = FY 1 Jul 2026 – 30 Jun 2027, shown
-in the UI as "FY26–27"). FQ1 = Jul-Sep, FQ2 = Oct-Dec, FQ3 = Jan-Mar, FQ4 =
-Apr-Jun.
+Five reporting panels on Overview, each backed by its own endpoint rather
+than bundled into `/stats/overview` — they're switched by a granularity
+toggle the operator controls, not something every page load needs.
+`period` strings follow the same convention everywhere: `"YYYY-MM"` for
+month (calendar), `"YYYY-FQn"` for quarter, `"YYYY"` for year — the latter
+two are **fiscal** (the AU financial year, 1 Jul – 30 Jun), not calendar.
+`YYYY` is the calendar year the fiscal year *starts* in (e.g. `"2026"` = FY
+1 Jul 2026 – 30 Jun 2027, shown in the UI as "FY26–27"). FQ1 = Jul-Sep, FQ2
+= Oct-Dec, FQ3 = Jan-Mar, FQ4 = Apr-Jun. Day/week (volume only) use plain
+calendar dates instead, same as before.
 
-All-time by design, same as the "Avg. resolution time" tile it extends —
-this is a process metric (how fast are things getting resolved), not a
-volume figure, so it isn't scoped to `TOTAL_SINCE` the way `dailyFlow`/
-`weeklyFlow`/the by-category/status/priority/facility breakdowns are.
+**Enquiry volume** (`/stats/volume-trend?granularity=day|week|month|quarter`,
+no year) — received vs. resolved counts, replacing what used to be two
+separate fixed-granularity charts (a daily one and a cumulative weekly
+one) with a single Day/Week/Month/Quarter toggle. Deliberately
+non-cumulative at every granularity now (the old weekly chart accumulated;
+this doesn't) so switching granularity only changes the bucket size, not
+what kind of thing is being shown. Zero-filled from `TOTAL_SINCE` through
+now — scoped to that date the same way the by-category/status/priority/
+facility breakdowns are, since this is a volume figure.
+
+**Avg. resolution time** (`/stats/resolution-trend?granularity=month|quarter|year&sla=<hours>`)
+— unchanged from before, plus an SLA compliance rate: `slaCompliantCount`/
+`slaComplianceRate` alongside `avgHours`/`count`, bound to `sla` at query
+time (default 48) rather than baked into the SQL, so any threshold works
+without re-preparing statements. All-time by design, same as the "Avg.
+resolution time" tile it extends — a process metric, not a volume figure,
+so unlike the panels above it isn't scoped to `TOTAL_SINCE`.
 `resolved_at IS NOT NULL` already excludes rows with no reliable timing
-data on its own.
+data on its own. Periods with no resolved rows simply don't appear (no
+zero-filling — unlike the volume panel, a KPI trend has no fixed window to
+fill gaps in).
+
+**First response time** (`/stats/first-response-trend?granularity=month|quarter|year`)
+— same idea, grouped by `first_replied_at` instead of `resolved_at`, and
+not gated on `status = 'RESOLVED'` (a reply matters whether the enquiry's
+since been closed or not). **Forward-looking only**: `first_replied_at` is
+set once, the first time `syncReplyStatuses` (graph/poller.js) detects any
+reply — customer-facing or an internal forward — via Graph's own
+`sentDateTime` on the earliest matching Sent Items message. There's no way
+to reconstruct when a past reply was first sent for enquiries that already
+had one before this column existed, so this can be sparse or empty for a
+while after deploy and only fills in from here forward.
+
+**Resolution time by priority** (`/stats/resolution-by-priority`) — an
+all-time snapshot, not a period trend (no `granularity` param): is URGENT
+actually resolved faster than NORMAL/LOW? A comparison across priority
+tiers, not across time.
+
+**Backlog trend** (`/stats/backlog-trend?granularity=month|quarter|year`)
+— open-enquiry count as of the end of each period: `received_at <= end`
+AND (`resolved_at` is unset or still after `end`). Deliberately **not**
+scoped to `TOTAL_SINCE`, same as the Open/Urgent stat tiles this extends
+into a trend — backlog from before tracking began is still real backlog.
+**Approximation, not exact**: this over-counts "still open" for any closed
+enquiry with no `resolved_at` at all — IGNORED/DISMISSED closures have no
+equivalent timestamp to `resolved_at`, and a RESOLVED row can lack one too
+if it was resolved before that column existed (see `backfillResolvedAt` in
+graph/poller.js, the active repair pass that shrinks this gap over time).
+Accepted given the volume this affects is small, rather than adding a
+second closure-timestamp column for a KPI this workflow-adjacent.
 
 ## Folder tree enumeration (`/folder-map`)
 

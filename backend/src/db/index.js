@@ -60,9 +60,17 @@ db.exec(`
 // swallow a genuinely different failure). Distinct from updated_at: that
 // bumps on any field change, so it can't be trusted as "when did this
 // actually become resolved" (see resolutionStatsStmt in repository.js).
-const hasResolvedAt = db.prepare('PRAGMA table_info(enquiries)').all().some((c) => c.name === 'resolved_at');
-if (!hasResolvedAt) {
+const existingColumns = db.prepare('PRAGMA table_info(enquiries)').all().map((c) => c.name);
+if (!existingColumns.includes('resolved_at')) {
   db.exec('ALTER TABLE enquiries ADD COLUMN resolved_at TEXT');
+}
+// Set once, the first time a customer-facing reply is detected (see
+// syncReplyStatuses in graph/poller.js) — never overwritten afterward, same
+// "set once" discipline as resolved_at. Forward-looking only: there's no
+// way to reconstruct when a past reply was first sent for enquiries that
+// already have a reply by the time this column started being populated.
+if (!existingColumns.includes('first_replied_at')) {
+  db.exec('ALTER TABLE enquiries ADD COLUMN first_replied_at TEXT');
 }
 
 // One-time reclassification, not a schema change — REMOVED used to mean "the

@@ -1,12 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getOverviewStats, getIngestStatus, getResolutionTrend } from '../api';
+import {
+  getOverviewStats,
+  getIngestStatus,
+  getResolutionTrend,
+  getFirstResponseTrend,
+  getResolutionByPriority,
+  getBacklogTrend,
+  getVolumeTrend,
+} from '../api';
 import { BarList } from '../components/BarList';
 import { DualTrendChart } from '../components/DualTrendChart';
 import { OverviewSkeleton } from '../components/Skeletons';
 import { IconLayers, IconInbox, IconAlertTriangle, IconClock, IconEye } from '../components/Icons';
-import { categoryLabel, statusLabel } from '../taxonomy';
+import { categoryLabel, statusLabel, priorityLabel } from '../taxonomy';
 import { useCountUp } from '../hooks/useCountUp';
+import { usePeriodTrend } from '../hooks/usePeriodTrend';
 
 // Matches App.jsx's sidebar poll interval — the two independently fetched
 // the same stats with no shared cadence, so this page's own numbers could
@@ -49,8 +58,8 @@ const MIN_RESOLVED_SAMPLE = 5;
 // so "received" and "resolved" read the same way in every chart.
 const RECEIVED_SERIES = { key: 'received', label: 'Received', color: 'var(--series-1)' };
 const RESOLVED_SERIES = { key: 'resolved', label: 'Resolved', color: 'var(--status-good)' };
-const RECEIVED_CUMULATIVE_SERIES = { key: 'receivedCumulative', label: 'Received', color: 'var(--series-1)' };
-const RESOLVED_CUMULATIVE_SERIES = { key: 'resolvedCumulative', label: 'Resolved', color: 'var(--status-good)' };
+
+const DEFAULT_SLA_HOURS = 48;
 
 function formatDay(d) {
   return new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -61,11 +70,18 @@ function formatWeekStart(d) {
 }
 
 const STATUS_ORDER = ['NEW', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER', 'RESOLVED', 'IGNORED', 'DISMISSED'];
+const PRIORITY_ORDER = ['URGENT', 'HIGH', 'NORMAL', 'LOW'];
 
-const TREND_GRANULARITIES = [
+const PERIOD_GRANULARITIES = [
   { key: 'month', label: 'Month' },
   { key: 'quarter', label: 'Quarter' },
   { key: 'year', label: 'Year' },
+];
+const VOLUME_GRANULARITIES = [
+  { key: 'day', label: 'Day' },
+  { key: 'week', label: 'Week' },
+  { key: 'month', label: 'Month' },
+  { key: 'quarter', label: 'Quarter' },
 ];
 
 // Period strings come straight from the backend's SQL grouping (see
@@ -93,13 +109,52 @@ function formatTrendPeriod(period, granularity) {
   return fiscalYearLabel(period);
 }
 
+// Volume's granularity set (day/week/month/quarter) overlaps with the
+// month/quarter/year panels' set but adds day/week, which have their own
+// existing formatters (plain calendar dates, not fiscal).
+function formatVolumePeriod(period, granularity) {
+  if (granularity === 'day') return formatDay(period);
+  if (granularity === 'week') return formatWeekStart(period);
+  return formatTrendPeriod(period, granularity);
+}
+
+// Shared shape for the small "Loading… / failed / empty / data" panel body
+// used by every period-toggle KPI panel below, so that state-handling logic
+// (and its ordering — error first, then loading, then empty, then content)
+// isn't repeated five times with a chance of drifting out of sync.
+function TrendPanelBody({ error, loading, data, emptyMessage, children }) {
+  if (error) return <p className="draft-hint" style={{ margin: 0 }}>Failed to load: {error}</p>;
+  if (loading) return <p className="draft-hint" style={{ margin: 0 }}>Loading…</p>;
+  if (!data || data.length === 0) return <p className="draft-hint" style={{ margin: 0 }}>{emptyMessage}</p>;
+  return children;
+}
+
+function GranularityToggle({ granularities, value, onChange }) {
+  return (
+    <div className="panel-toggle">
+      {granularities.map((g) => (
+        <button
+          key={g.key}
+          type="button"
+          className={`panel-toggle-btn${value === g.key ? ' active' : ''}`}
+          onClick={() => onChange(g.key)}
+        >
+          {g.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export default function Overview() {
   const [stats, setStats] = useState(null);
   const [error, setError] = useState(null);
   const [mailbox, setMailbox] = useState(null);
-  const [trendGranularity, setTrendGranularity] = useState('month');
-  const [resolutionTrend, setResolutionTrend] = useState(null);
-  const [resolutionTrendError, setResolutionTrendError] = useState(null);
+
+  const [resolutionGranularity, setResolutionGranularity] = useState('month');
+  const [firstResponseGranularity, setFirstResponseGranularity] = useState('month');
+  const [backlogGranularity, setBacklogGranularity] = useState('month');
+  const [volumeGranularity, setVolumeGranularity] = useState('day');
 
   useEffect(() => {
     const load = () => getOverviewStats().then(setStats).catch((e) => setError(e.message));
@@ -108,38 +163,24 @@ export default function Overview() {
     return () => clearInterval(interval);
   }, []);
 
-  // Separate fetch from the main stats poll above — this is a reporting
-  // view the operator switches granularity on, not something that needs to
-  // refresh every 60s like the live counts do. Re-fetches whenever the
-  // granularity toggle changes; the abort guards against a slow response
-  // for a granularity the operator has already clicked away from landing
-  // after a newer one already did.
-  useEffect(() => {
-    const controller = new AbortController();
-    // Reset to the loading state immediately rather than leaving the
-    // previous granularity's rows on screen — formatTrendPeriod parses
-    // periods differently per granularity (e.g. "2026-07" vs "2026-Q3"),
-    // so stale rows would briefly render under the new granularity's label
-    // format otherwise.
-    setResolutionTrend(null);
-    setResolutionTrendError(null);
-    getResolutionTrend(trendGranularity, { signal: controller.signal })
-      .then((rows) => {
-        setResolutionTrend(rows);
-        setResolutionTrendError(null);
-      })
-      .catch((e) => {
-        if (e.name === 'AbortError') return;
-        setResolutionTrendError(e.message);
-      });
-    return () => controller.abort();
-  }, [trendGranularity]);
-
   // One-time — the mailbox address is static config, not something that
   // changes while the page is open, unlike stats.
   useEffect(() => {
     getIngestStatus().then((s) => setMailbox(s.mailbox)).catch(() => {});
   }, []);
+
+  // Five independent period-toggle KPI panels below, each backed by its own
+  // usePeriodTrend call (fetch + AbortController cleanup on granularity
+  // change) — see hooks/usePeriodTrend.js. resolutionByPriority has no real
+  // granularity (it's an all-time snapshot, not a period trend — see the
+  // comment on resolutionTimeByPriority in db/repository.js), so it's
+  // called with a fixed 'all' key just to reuse the same fetch/abort
+  // plumbing rather than duplicating it for one const-value case.
+  const resolutionTrend = usePeriodTrend(getResolutionTrend, resolutionGranularity);
+  const firstResponseTrend = usePeriodTrend(getFirstResponseTrend, firstResponseGranularity);
+  const backlogTrend = usePeriodTrend(getBacklogTrend, backlogGranularity);
+  const volumeTrend = usePeriodTrend(getVolumeTrend, volumeGranularity);
+  const priorityTrend = usePeriodTrend((_g, opts) => getResolutionByPriority(opts), 'all');
 
   // Hooks must run unconditionally, so these all sit above the
   // loading/error early-returns below, fed with `null` until stats arrive.
@@ -180,18 +221,51 @@ export default function Overview() {
     return stats.agingBuckets.map((b) => ({ key: b.bucket, value: b.count, label: b.bucket }));
   }, [stats]);
 
-  // count folded into the label (not a second BarList series) since these
-  // two numbers are on completely different scales (hours vs. a count) —
-  // same reasoning DualTrendChart's shared-axis limitation would otherwise
-  // run into if avgHours and count were plotted together.
+  // count (and, for resolution time, SLA compliance) folded into the label
+  // rather than a second BarList series, since they're on a completely
+  // different scale (a count/percentage vs. hours) — same reasoning
+  // DualTrendChart's shared-axis limitation would otherwise run into if
+  // these were plotted together.
   const resolutionTrendData = useMemo(() => {
-    if (!resolutionTrend) return [];
-    return resolutionTrend.map((r) => ({
+    if (!resolutionTrend.data) return [];
+    return resolutionTrend.data.map((r) => {
+      const slaPct = r.slaComplianceRate == null ? null : Math.round(r.slaComplianceRate * 100);
+      return {
+        key: r.period,
+        value: r.avgHours,
+        label: `${formatTrendPeriod(r.period, resolutionGranularity)} (${r.count} resolved${slaPct == null ? '' : ` · ${slaPct}% ≤${DEFAULT_SLA_HOURS}h`})`,
+      };
+    });
+  }, [resolutionTrend.data, resolutionGranularity]);
+
+  const firstResponseTrendData = useMemo(() => {
+    if (!firstResponseTrend.data) return [];
+    return firstResponseTrend.data.map((r) => ({
       key: r.period,
       value: r.avgHours,
-      label: `${formatTrendPeriod(r.period, trendGranularity)} (${r.count} resolved)`,
+      label: `${formatTrendPeriod(r.period, firstResponseGranularity)} (${r.count} replied)`,
     }));
-  }, [resolutionTrend, trendGranularity]);
+  }, [firstResponseTrend.data, firstResponseGranularity]);
+
+  const backlogTrendData = useMemo(() => {
+    if (!backlogTrend.data) return [];
+    return backlogTrend.data.map((r) => ({
+      key: r.period,
+      value: r.openAtEnd,
+      label: formatTrendPeriod(r.period, backlogGranularity),
+    }));
+  }, [backlogTrend.data, backlogGranularity]);
+
+  const priorityTrendData = useMemo(() => {
+    if (!priorityTrend.data) return [];
+    return [...priorityTrend.data]
+      .sort((a, b) => PRIORITY_ORDER.indexOf(a.priority) - PRIORITY_ORDER.indexOf(b.priority))
+      .map((r) => ({
+        key: r.priority,
+        value: r.avgHours,
+        label: `${priorityLabel(r.priority)} (${r.count} resolved)`,
+      }));
+  }, [priorityTrend.data]);
 
   if (error) return <div className="error-state">Failed to load stats: {error}</div>;
   if (!stats) return <OverviewSkeleton />;
@@ -316,34 +390,91 @@ export default function Overview() {
 
       <div className="panel">
         <div className="panel-header-row">
-          <h3>Avg. resolution time by {trendGranularity}</h3>
-          <div className="panel-toggle">
-            {TREND_GRANULARITIES.map((g) => (
-              <button
-                key={g.key}
-                type="button"
-                className={`panel-toggle-btn${trendGranularity === g.key ? ' active' : ''}`}
-                onClick={() => setTrendGranularity(g.key)}
-              >
-                {g.label}
-              </button>
-            ))}
-          </div>
+          <h3>Enquiry volume: received vs. resolved by {volumeGranularity}</h3>
+          <GranularityToggle granularities={VOLUME_GRANULARITIES} value={volumeGranularity} onChange={setVolumeGranularity} />
         </div>
-        {trendGranularity !== 'month' && (
+        <TrendPanelBody
+          error={volumeTrend.error}
+          loading={volumeTrend.loading}
+          data={volumeTrend.data}
+          emptyMessage="No enquiries recorded yet."
+        >
+          <DualTrendChart
+            data={volumeTrend.data || []}
+            xKey="period"
+            seriesA={RECEIVED_SERIES}
+            seriesB={RESOLVED_SERIES}
+            xFormat={(p) => formatVolumePeriod(p, volumeGranularity)}
+          />
+        </TrendPanelBody>
+      </div>
+
+      <div className="panel">
+        <div className="panel-header-row">
+          <h3>Avg. resolution time by {resolutionGranularity}</h3>
+          <GranularityToggle granularities={PERIOD_GRANULARITIES} value={resolutionGranularity} onChange={setResolutionGranularity} />
+        </div>
+        {resolutionGranularity !== 'month' && (
           <p className="draft-hint" style={{ marginTop: 0, marginBottom: 10 }}>Financial year — 1 Jul to 30 Jun.</p>
         )}
-        {resolutionTrendError ? (
-          <p className="draft-hint" style={{ margin: 0 }}>Failed to load: {resolutionTrendError}</p>
-        ) : resolutionTrend === null ? (
-          <p className="draft-hint" style={{ margin: 0 }}>Loading…</p>
-        ) : resolutionTrendData.length > 0 ? (
+        <TrendPanelBody
+          error={resolutionTrend.error}
+          loading={resolutionTrend.loading}
+          data={resolutionTrendData}
+          emptyMessage="No resolved enquiries with known resolution time yet."
+        >
           <BarList data={resolutionTrendData} format={(h) => `${h.toFixed(1)}h`} />
-        ) : (
-          <p className="draft-hint" style={{ margin: 0 }}>
-            No resolved enquiries with known resolution time yet.
-          </p>
-        )}
+        </TrendPanelBody>
+      </div>
+
+      <div className="chart-grid">
+        <div className="panel">
+          <h3>Resolution time by priority</h3>
+          <TrendPanelBody
+            error={priorityTrend.error}
+            loading={priorityTrend.loading}
+            data={priorityTrendData}
+            emptyMessage="No resolved enquiries with known resolution time yet."
+          >
+            <BarList data={priorityTrendData} format={(h) => `${h.toFixed(1)}h`} />
+          </TrendPanelBody>
+        </div>
+
+        <div className="panel">
+          <div className="panel-header-row">
+            <h3>First response time by {firstResponseGranularity}</h3>
+            <GranularityToggle granularities={PERIOD_GRANULARITIES} value={firstResponseGranularity} onChange={setFirstResponseGranularity} />
+          </div>
+          {firstResponseGranularity !== 'month' && (
+            <p className="draft-hint" style={{ marginTop: 0, marginBottom: 10 }}>Financial year — 1 Jul to 30 Jun.</p>
+          )}
+          <TrendPanelBody
+            error={firstResponseTrend.error}
+            loading={firstResponseTrend.loading}
+            data={firstResponseTrendData}
+            emptyMessage="No replies tracked yet — this only counts replies sent since this feature was added."
+          >
+            <BarList data={firstResponseTrendData} format={(h) => `${h.toFixed(1)}h`} />
+          </TrendPanelBody>
+        </div>
+
+        <div className="panel">
+          <div className="panel-header-row">
+            <h3>Backlog (open at end of {backlogGranularity})</h3>
+            <GranularityToggle granularities={PERIOD_GRANULARITIES} value={backlogGranularity} onChange={setBacklogGranularity} />
+          </div>
+          {backlogGranularity !== 'month' && (
+            <p className="draft-hint" style={{ marginTop: 0, marginBottom: 10 }}>Financial year — 1 Jul to 30 Jun.</p>
+          )}
+          <TrendPanelBody
+            error={backlogTrend.error}
+            loading={backlogTrend.loading}
+            data={backlogTrendData}
+            emptyMessage="No data yet."
+          >
+            <BarList data={backlogTrendData} />
+          </TrendPanelBody>
+        </div>
       </div>
 
       <div className="chart-grid">
@@ -352,30 +483,6 @@ export default function Overview() {
           <BarList data={agingData} colorFor={(key) => AGING_COLORS[key]} />
         </div>
 
-        <div className="panel">
-          <h3>Daily volume: received vs. resolved{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
-          <DualTrendChart
-            data={stats.dailyFlow}
-            xKey="date"
-            seriesA={RECEIVED_SERIES}
-            seriesB={RESOLVED_SERIES}
-            xFormat={formatDay}
-          />
-        </div>
-
-        <div className="panel">
-          <h3>Weekly, accumulated{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
-          <DualTrendChart
-            data={stats.weeklyFlow}
-            xKey="weekStart"
-            seriesA={RECEIVED_CUMULATIVE_SERIES}
-            seriesB={RESOLVED_CUMULATIVE_SERIES}
-            xFormat={formatWeekStart}
-          />
-        </div>
-      </div>
-
-      <div className="chart-grid">
         <div className="panel">
           <h3>Enquiries by category{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
           <BarList data={categoryData} linkTo={(key) => `/queue?category=${encodeURIComponent(key)}`} />
@@ -389,15 +496,15 @@ export default function Overview() {
             linkTo={(key) => `/queue?status=${encodeURIComponent(key)}`}
           />
         </div>
+      </div>
 
-        <div className="panel">
-          <h3>Top facilities / organisations{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
-          {facilityData.length > 0 ? (
-            <BarList data={facilityData} />
-          ) : (
-            <p className="draft-hint" style={{ margin: 0 }}>No facility data yet.</p>
-          )}
-        </div>
+      <div className="panel">
+        <h3>Top facilities / organisations{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
+        {facilityData.length > 0 ? (
+          <BarList data={facilityData} />
+        ) : (
+          <p className="draft-hint" style={{ margin: 0 }}>No facility data yet.</p>
+        )}
       </div>
     </div>
   );

@@ -73,6 +73,22 @@ export function getResolutionTrend(granularity, options = {}) {
   return request(`/stats/resolution-trend?granularity=${encodeURIComponent(granularity)}`, options);
 }
 
+export function getFirstResponseTrend(granularity, options = {}) {
+  return request(`/stats/first-response-trend?granularity=${encodeURIComponent(granularity)}`, options);
+}
+
+export function getResolutionByPriority(options = {}) {
+  return request('/stats/resolution-by-priority', options);
+}
+
+export function getBacklogTrend(granularity, options = {}) {
+  return request(`/stats/backlog-trend?granularity=${encodeURIComponent(granularity)}`, options);
+}
+
+export function getVolumeTrend(granularity, options = {}) {
+  return request(`/stats/volume-trend?granularity=${encodeURIComponent(granularity)}`, options);
+}
+
 export function getIngestStatus() {
   return request('/ingest/status');
 }

@@ -329,6 +329,7 @@ const UPDATE_COLUMNS = {
   classifiedBy: 'classified_by',
   confidence: 'confidence',
   resolvedAt: 'resolved_at',
+  firstRepliedAt: 'first_replied_at',
   // Added for reclassifyEnquiry below — a bulk re-categorization needs to
   // update everything classifyEmail() produces, not just category itself.
   priority: 'priority',
@@ -376,7 +377,7 @@ function listOpenEnquiriesForFlagSync() {
 function listOpenEnquiriesForReplySync() {
   return db
     .prepare(
-      `SELECT id, graph_message_id, conversation_id, status, sender_domain FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) AND graph_message_id IS NOT NULL AND conversation_id IS NOT NULL`
+      `SELECT id, graph_message_id, conversation_id, status, sender_domain, first_replied_at FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) AND graph_message_id IS NOT NULL AND conversation_id IS NOT NULL`
     )
     .all()
     .map((r) => ({
@@ -385,6 +386,7 @@ function listOpenEnquiriesForReplySync() {
       conversationId: r.conversation_id,
       status: r.status,
       senderDomain: r.sender_domain,
+      firstRepliedAt: r.first_replied_at,
     }));
 }
 
@@ -534,55 +536,160 @@ const resolutionStatsStmt = db.prepare(
 
 // Fiscal year starting 1 July (the AU financial year, not the calendar
 // year) — FQ1 = Jul-Sep, FQ2 = Oct-Dec, FQ3 = Jan-Mar, FQ4 = Apr-Jun.
-// FISCAL_YEAR_START_EXPR is the calendar year the fiscal year *begins* in
-// (e.g. 2026 for the FY running 1 Jul 2026 - 30 Jun 2027) — Jan-Jun dates
-// belong to the fiscal year that started the previous calendar year, hence
-// the -1. FISCAL_QUARTER_EXPR shifts the month by 5 before the /3 divide so
-// July (month 7) lands in bucket 1 instead of calendar-quarter 3.
-const FISCAL_YEAR_START_EXPR =
-  "(CASE WHEN CAST(strftime('%m', resolved_at) AS INTEGER) >= 7 THEN CAST(strftime('%Y', resolved_at) AS INTEGER) ELSE CAST(strftime('%Y', resolved_at) AS INTEGER) - 1 END)";
-const FISCAL_QUARTER_EXPR = "(((CAST(strftime('%m', resolved_at) AS INTEGER) + 5) % 12) / 3 + 1)";
+// Parameterized by column since this same fiscal-period grouping is used
+// on both resolved_at (resolution-time trend) and first_replied_at
+// (first-response-time trend) below. The "start year" is the calendar
+// year the fiscal year *begins* in (e.g. 2026 for the FY running 1 Jul
+// 2026 - 30 Jun 2027) — Jan-Jun dates belong to the fiscal year that
+// started the previous calendar year, hence the -1. The quarter number
+// shifts the month by 5 before the /3 divide so July (month 7) lands in
+// bucket 1 instead of calendar-quarter 3.
+function fiscalYearStartExpr(column) {
+  return `(CASE WHEN CAST(strftime('%m', ${column}) AS INTEGER) >= 7 THEN CAST(strftime('%Y', ${column}) AS INTEGER) ELSE CAST(strftime('%Y', ${column}) AS INTEGER) - 1 END)`;
+}
+function fiscalQuarterExpr(column) {
+  return `(((CAST(strftime('%m', ${column}) AS INTEGER) + 5) % 12) / 3 + 1)`;
+}
+// Calendar month, not fiscal — a month label ("Jul 2026") is unambiguous
+// either way, so there's nothing for the fiscal-year framing to change here.
+function periodExprFor(column, granularity) {
+  if (granularity === 'month') return `strftime('%Y-%m', ${column})`;
+  if (granularity === 'quarter') return `CAST(${fiscalYearStartExpr(column)} AS TEXT) || '-FQ' || ${fiscalQuarterExpr(column)}`;
+  if (granularity === 'year') return `CAST(${fiscalYearStartExpr(column)} AS TEXT)`;
+  throw new Error(`Invalid granularity: ${granularity}. Use month, quarter, or year.`);
+}
 
 // KPI rollup for the resolution-time trend panel — one prepared statement
-// per granularity (SQLite has no native quarter/fiscal-year grouping, so
-// those are built from the expressions above). All-time, same as
-// resolutionStatsStmt above and for the same reason: this is a process
-// metric (how fast are we resolving things), not a volume figure, so it
-// isn't scoped to TOTAL_SINCE — resolved_at IS NOT NULL already excludes
-// rows with no reliable timing data (pre-resolved_at, or confirmed-missing
-// messages with nothing left to ask Graph about).
-const RESOLUTION_TREND_STMTS = {
-  // Calendar month, not fiscal — a month label ("Jul 2026") is unambiguous
-  // either way, so there's nothing for the fiscal-year framing to change here.
-  month: db.prepare(
-    `SELECT strftime('%Y-%m', resolved_at) as period,
+// per granularity. All-time, same as resolutionStatsStmt above and for the
+// same reason: this is a process metric (how fast are we resolving
+// things), not a volume figure, so it isn't scoped to TOTAL_SINCE —
+// resolved_at IS NOT NULL already excludes rows with no reliable timing
+// data (pre-resolved_at, or confirmed-missing messages with nothing left
+// to ask Graph about).
+//
+// slaCompliantCount/slaComplianceRate is bound to a caller-supplied
+// threshold (hours) at query time, not baked into the SQL text, so the
+// same prepared statement serves any SLA target without re-preparing.
+const RESOLUTION_TREND_STMTS = ['month', 'quarter', 'year'].reduce((stmts, granularity) => {
+  stmts[granularity] = db.prepare(
+    `SELECT ${periodExprFor('resolved_at', granularity)} as period,
             AVG((julianday(resolved_at) - julianday(received_at)) * 24) as avgHours,
-            COUNT(*) as count
+            COUNT(*) as count,
+            SUM(CASE WHEN (julianday(resolved_at) - julianday(received_at)) * 24 <= @slaHours THEN 1 ELSE 0 END) as slaCompliantCount
      FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL
      GROUP BY period ORDER BY period ASC`
-  ),
-  quarter: db.prepare(
-    `SELECT CAST(${FISCAL_YEAR_START_EXPR} AS TEXT) || '-FQ' || ${FISCAL_QUARTER_EXPR} as period,
-            AVG((julianday(resolved_at) - julianday(received_at)) * 24) as avgHours,
-            COUNT(*) as count
-     FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL
-     GROUP BY period ORDER BY period ASC`
-  ),
-  // period is the fiscal year's start year (e.g. "2026" = FY 1 Jul 2026 -
-  // 30 Jun 2027) — formatted for display in Overview.jsx's formatTrendPeriod.
-  year: db.prepare(
-    `SELECT CAST(${FISCAL_YEAR_START_EXPR} AS TEXT) as period,
-            AVG((julianday(resolved_at) - julianday(received_at)) * 24) as avgHours,
-            COUNT(*) as count
-     FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL
-     GROUP BY period ORDER BY period ASC`
-  ),
-};
+  );
+  return stmts;
+}, {});
 
-function resolutionTimeTrend(granularity) {
+const DEFAULT_SLA_HOURS = 48;
+
+function resolutionTimeTrend(granularity, slaHours = DEFAULT_SLA_HOURS) {
   const stmt = RESOLUTION_TREND_STMTS[granularity];
   if (!stmt) throw new Error(`Invalid granularity: ${granularity}. Use month, quarter, or year.`);
+  return stmt.all({ slaHours }).map((row) => ({
+    ...row,
+    slaComplianceRate: row.count > 0 ? row.slaCompliantCount / row.count : null,
+  }));
+}
+
+// Same idea as resolutionTimeTrend but grouped by first_replied_at instead
+// of resolved_at, and deliberately not gated on status = 'RESOLVED' — "how
+// fast did someone touch this" applies to any enquiry that's ever gotten a
+// reply, closed or not. No SLA column here; that wasn't asked for on this
+// metric, only on full resolution time.
+const FIRST_RESPONSE_TREND_STMTS = ['month', 'quarter', 'year'].reduce((stmts, granularity) => {
+  stmts[granularity] = db.prepare(
+    `SELECT ${periodExprFor('first_replied_at', granularity)} as period,
+            AVG((julianday(first_replied_at) - julianday(received_at)) * 24) as avgHours,
+            COUNT(*) as count
+     FROM enquiries WHERE first_replied_at IS NOT NULL
+     GROUP BY period ORDER BY period ASC`
+  );
+  return stmts;
+}, {});
+
+function firstResponseTimeTrend(granularity) {
+  const stmt = FIRST_RESPONSE_TREND_STMTS[granularity];
+  if (!stmt) throw new Error(`Invalid granularity: ${granularity}. Use month, quarter, or year.`);
   return stmt.all();
+}
+
+// All-time, all-resolved breakdown by priority — a simple snapshot (like
+// byFacility/byCategory), not a period trend: "is URGENT actually
+// resolved faster than NORMAL?" is a comparison across priority tiers, not
+// across time, so there's no granularity toggle here.
+const resolutionTimeByPriorityStmt = db.prepare(
+  `SELECT priority,
+          AVG((julianday(resolved_at) - julianday(received_at)) * 24) as avgHours,
+          COUNT(*) as count
+   FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL
+   GROUP BY priority`
+);
+
+function resolutionTimeByPriority() {
+  return resolutionTimeByPriorityStmt.all();
+}
+
+// "Open at end of period" — enquiries received on/before that moment whose
+// resolved_at is either unset or still in the future relative to it.
+// Deliberately unscoped by TOTAL_SINCE, same as the Open/Urgent stat tiles
+// this extends into a trend — backlog from before tracking began is still
+// real backlog, not a historical volume figure to exclude.
+//
+// Approximation, not exact: this over-counts "still open" for any closed
+// enquiry with no resolved_at at all — that's IGNORED/DISMISSED (no
+// equivalent timestamp exists for those paths at all — see the DISMISSED
+// comment on the delete route, and statusForConfirmedSpam) but also any
+// RESOLVED row resolved before the resolved_at column existed, or whose
+// source message is confirmed gone with nothing left to ask Graph about
+// (see backfillResolvedAt in poller.js, the active repair pass that
+// shrinks this gap for RESOLVED rows over time). Accepted given the
+// volume this affects is small, rather than adding a second closure
+// timestamp column for a KPI this workflow-adjacent.
+const backlogAtStmt = db.prepare(
+  "SELECT COUNT(*) as c FROM enquiries WHERE received_at <= @asOf AND (resolved_at IS NULL OR resolved_at > @asOf)"
+);
+
+// Period-end boundaries from TOTAL_SINCE through now, labeled the same way
+// resolutionTimeTrend's periods are (so Overview.jsx's formatTrendPeriod
+// can render both) — computed in JS rather than SQL since there's no
+// per-row data to GROUP BY here, just a sequence of "as-of" instants to
+// query backlogAtStmt against. TOTAL_SINCE (1 Jul) is deliberately already
+// a simultaneous month/fiscal-quarter/fiscal-year boundary, so every
+// granularity can anchor to the same start date with no separate
+// snapping logic.
+function enumeratePeriodEnds(granularity) {
+  const stepMonths = { month: 1, quarter: 3, year: 12 }[granularity];
+  if (!stepMonths) throw new Error(`Invalid granularity: ${granularity}. Use month, quarter, or year.`);
+  const anchor = new Date(TOTAL_SINCE);
+  const nowMs = Date.now();
+  const ends = [];
+  let cursorStart = new Date(Date.UTC(anchor.getUTCFullYear(), anchor.getUTCMonth(), anchor.getUTCDate()));
+  while (cursorStart.getTime() <= nowMs) {
+    const cursorEnd = new Date(Date.UTC(cursorStart.getUTCFullYear(), cursorStart.getUTCMonth() + stepMonths, cursorStart.getUTCDate()));
+    ends.push({ periodStart: cursorStart, endExclusiveIso: cursorEnd.toISOString() });
+    cursorStart = cursorEnd;
+  }
+  return ends;
+}
+
+function labelForPeriodStart(granularity, date) {
+  if (granularity === 'month') {
+    return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+  }
+  const month = date.getUTCMonth() + 1;
+  const fiscalYearStart = month >= 7 ? date.getUTCFullYear() : date.getUTCFullYear() - 1;
+  if (granularity === 'year') return String(fiscalYearStart);
+  const fq = Math.floor(((month + 5) % 12) / 3) + 1;
+  return `${fiscalYearStart}-FQ${fq}`;
+}
+
+function backlogTrend(granularity) {
+  return enumeratePeriodEnds(granularity).map(({ periodStart, endExclusiveIso }) => ({
+    period: labelForPeriodStart(granularity, periodStart),
+    openAtEnd: backlogAtStmt.get({ asOf: endExclusiveIso }).c,
+  }));
 }
 // Scoped to TOTAL_SINCE, same as the "Total enquiries" stat this chart sits
 // next to — querying all-time here (as this used to) mixes in pre-tracking
@@ -633,14 +740,28 @@ const resolvedInWindowStmt = db.prepare(
   `SELECT resolved_at FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL AND resolved_at >= '${TOTAL_SINCE}'`
 );
 
-// Cumulative received vs. cumulative resolved since TOTAL_SINCE, both
-// restarting from 0 at that date — the gap between the two lines shows
-// whether intake since tracking began is outpacing resolution, not the
-// mailbox's all-time backlog (that's what the Open stat tile is for).
-// Bucket count grows by one every 7 days rather than staying fixed, so the
-// window never drifts out of sync with TOTAL_SINCE the way a rolling
-// trailing-N-weeks window would.
-function weeklyAccumulated() {
+// Unified volume KPI (received vs. resolved counts) behind the Overview
+// Day/Week/Month/Quarter toggle — replaced two previously-separate,
+// fixed-granularity charts (a daily one and a cumulative-weekly one).
+// Non-cumulative at every granularity, all zero-filled from TOTAL_SINCE
+// through now, so switching granularity doesn't change what kind of thing
+// is being shown, only the bucket size.
+function dailyVolumeTrend() {
+  const receivedByDay = Object.fromEntries(dailyReceivedRowsStmt.all().map((r) => [r.day, r.count]));
+  const resolvedByDay = Object.fromEntries(dailyResolvedRowsStmt.all().map((r) => [r.day, r.count]));
+  const dayCount = Math.max(1, Math.floor((Date.now() - new Date(TOTAL_SINCE).getTime()) / (24 * 60 * 60 * 1000)) + 1);
+  const out = [];
+  for (let i = dayCount - 1; i >= 0; i -= 1) {
+    const period = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    out.push({ period, received: receivedByDay[period] || 0, resolved: resolvedByDay[period] || 0 });
+  }
+  return out;
+}
+
+// Trailing-7-day buckets anchored at TOTAL_SINCE, growing by one bucket
+// every 7 days rather than a fixed count — same anchoring reasoning as
+// enumeratePeriodEnds below, just on a 7-day step instead of month-based.
+function weeklyVolumeTrend() {
   const startMs = new Date(TOTAL_SINCE).getTime();
   const nowMs = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
@@ -648,7 +769,6 @@ function weeklyAccumulated() {
 
   const receivedPerWeek = new Array(weekCount).fill(0);
   const resolvedPerWeek = new Array(weekCount).fill(0);
-
   const bucketIndexFor = (isoString) => Math.floor((new Date(isoString).getTime() - startMs) / (7 * dayMs));
 
   for (const row of receivedInWindowStmt.all()) {
@@ -660,18 +780,40 @@ function weeklyAccumulated() {
     if (idx >= 0 && idx < weekCount) resolvedPerWeek[idx] += 1;
   }
 
-  let cumReceived = 0;
-  let cumResolved = 0;
-  return receivedPerWeek.map((_, i) => {
-    cumReceived += receivedPerWeek[i];
-    cumResolved += resolvedPerWeek[i];
-    const weekStart = new Date(startMs + i * 7 * dayMs);
-    return {
-      weekStart: weekStart.toISOString().slice(0, 10),
-      receivedCumulative: cumReceived,
-      resolvedCumulative: cumResolved,
-    };
+  return receivedPerWeek.map((_, i) => ({
+    period: new Date(startMs + i * 7 * dayMs).toISOString().slice(0, 10),
+    received: receivedPerWeek[i],
+    resolved: resolvedPerWeek[i],
+  }));
+}
+
+const VOLUME_RECEIVED_STMTS = ['month', 'quarter'].reduce((stmts, g) => {
+  stmts[g] = db.prepare(
+    `SELECT ${periodExprFor('received_at', g)} as period, COUNT(*) as count FROM enquiries WHERE received_at >= '${TOTAL_SINCE}' GROUP BY period`
+  );
+  return stmts;
+}, {});
+const VOLUME_RESOLVED_STMTS = ['month', 'quarter'].reduce((stmts, g) => {
+  stmts[g] = db.prepare(
+    `SELECT ${periodExprFor('resolved_at', g)} as period, COUNT(*) as count FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL AND resolved_at >= '${TOTAL_SINCE}' GROUP BY period`
+  );
+  return stmts;
+}, {});
+
+function periodVolumeTrend(granularity) {
+  const receivedByPeriod = Object.fromEntries(VOLUME_RECEIVED_STMTS[granularity].all().map((r) => [r.period, r.count]));
+  const resolvedByPeriod = Object.fromEntries(VOLUME_RESOLVED_STMTS[granularity].all().map((r) => [r.period, r.count]));
+  return enumeratePeriodEnds(granularity).map(({ periodStart }) => {
+    const period = labelForPeriodStart(granularity, periodStart);
+    return { period, received: receivedByPeriod[period] || 0, resolved: resolvedByPeriod[period] || 0 };
   });
+}
+
+function volumeTrend(granularity) {
+  if (granularity === 'day') return dailyVolumeTrend();
+  if (granularity === 'week') return weeklyVolumeTrend();
+  if (granularity === 'month' || granularity === 'quarter') return periodVolumeTrend(granularity);
+  throw new Error(`Invalid granularity: ${granularity}. Use day, week, month, or quarter.`);
 }
 
 function overviewStats() {
@@ -718,25 +860,6 @@ function overviewStats() {
     count: agingByBucket[bucket] || 0,
   }));
 
-  // Daily received vs. resolved since TOTAL_SINCE, zero-filled — raw intake
-  // alone doesn't say whether it's being kept up with; this pairs it
-  // against the day things actually got resolved.
-  const dailyReceivedByDate = Object.fromEntries(dailyReceivedRowsStmt.all().map((r) => [r.day, r.count]));
-  const dailyResolvedByDate = Object.fromEntries(dailyResolvedRowsStmt.all().map((r) => [r.day, r.count]));
-  const dailyFlow = [];
-  const dayCount = Math.max(1, Math.floor((Date.now() - new Date(TOTAL_SINCE).getTime()) / (24 * 60 * 60 * 1000)) + 1);
-  for (let i = dayCount - 1; i >= 0; i -= 1) {
-    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
-    const key = d.toISOString().slice(0, 10);
-    dailyFlow.push({
-      date: key,
-      received: dailyReceivedByDate[key] || 0,
-      resolved: dailyResolvedByDate[key] || 0,
-    });
-  }
-
-  const weeklyFlow = weeklyAccumulated();
-
   return {
     total,
     totalSinceDate: TOTAL_SINCE,
@@ -747,8 +870,6 @@ function overviewStats() {
     byPriority: Object.fromEntries(byPriority.map((r) => [r.priority, r.count])),
     byFacility: byFacility.map((r) => ({ facility: r.facility, count: r.count })),
     agingBuckets,
-    dailyFlow,
-    weeklyFlow,
     oldestOpen: rowToEnquiry(oldestOpen),
     avgResolutionHours,
     resolvedCount: resolutionStats.count,
@@ -778,4 +899,8 @@ module.exports = {
   statusForFolderMove,
   statusForConfirmedSpam,
   resolutionTimeTrend,
+  firstResponseTimeTrend,
+  resolutionTimeByPriority,
+  backlogTrend,
+  volumeTrend,
 };

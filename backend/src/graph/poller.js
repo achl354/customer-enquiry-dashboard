@@ -113,6 +113,14 @@ async function backfillResolvedAt() {
  * moves to IN_PROGRESS. Same "only ever advance" rule as flag sync — this
  * never undoes a more specific status staff already set (statusForReply
  * handles that via STATUS_RANK).
+ *
+ * Also captures first_replied_at the first time any reply is detected
+ * (customer-facing or internal forward — "how fast did someone touch this
+ * at all" doesn't care which kind) — set once, from Graph's own
+ * sentDateTime, and never overwritten on later polls even as more replies
+ * accumulate. Forward-looking only: an enquiry that already had a reply
+ * before this column existed has no way to recover when that first reply
+ * actually happened.
  */
 async function syncReplyStatuses() {
   const open = repo.listOpenEnquiriesForReplySync();
@@ -127,10 +135,17 @@ async function syncReplyStatuses() {
     const reply = replies.get(enquiry.graphMessageId);
     if (!reply || !reply.hasReply) continue;
 
+    const patch = {};
+    if (!enquiry.firstRepliedAt && reply.firstReplyAt) {
+      patch.firstRepliedAt = reply.firstReplyAt;
+    }
+
     const isCustomerFacing = reply.recipients.some((addr) => domainOf(addr) === enquiry.senderDomain);
     const nextStatus = repo.statusForReply(isCustomerFacing, enquiry.status);
-    if (nextStatus) {
-      repo.updateEnquiry(enquiry.id, { status: nextStatus });
+    if (nextStatus) patch.status = nextStatus;
+
+    if (Object.keys(patch).length > 0) {
+      repo.updateEnquiry(enquiry.id, patch);
       updated += 1;
     }
   }

@@ -525,13 +525,16 @@ async function fetchMessageFlags(messageIds) {
  * For each { graphMessageId, conversationId } pair, check Sent Items for any
  * message in the same conversation — i.e. "has staff already replied to or
  * forwarded this enquiry?" — via the $batch endpoint. Returns a Map of
- * graphMessageId -> { hasReply, recipients } where `recipients` is every
- * to/cc address across matching Sent Items messages (used by the caller to
- * tell a customer-facing reply from a purely internal forward). A
- * conversationId that no longer resolves (e.g. very old/purged mail) is
- * skipped silently rather than failing the whole batch — and, same as
- * fetchMessageFlags, a failed $batch call for one chunk doesn't lose the
- * sync data already fetched for every other chunk.
+ * graphMessageId -> { hasReply, recipients, firstReplyAt } where
+ * `recipients` is every to/cc address across matching Sent Items messages
+ * (used by the caller to tell a customer-facing reply from a purely
+ * internal forward), and `firstReplyAt` is the earliest sentDateTime found
+ * (used to set first_replied_at, once, on first detection — see
+ * syncReplyStatuses in graph/poller.js). A conversationId that no longer
+ * resolves (e.g. very old/purged mail) is skipped silently rather than
+ * failing the whole batch — and, same as fetchMessageFlags, a failed
+ * $batch call for one chunk doesn't lose the sync data already fetched for
+ * every other chunk.
  */
 async function fetchReplyStatus(items) {
   if (items.length === 0) return new Map();
@@ -545,7 +548,14 @@ async function fetchReplyStatus(items) {
         requests: batch.map((item, i) => ({
           id: String(i),
           method: 'GET',
-          url: `/users/${mailbox}/mailFolders/sentitems/messages?$filter=conversationId eq '${encodeURIComponent(escapeODataString(item.conversationId))}'&$select=toRecipients,ccRecipients,sentDateTime&$orderby=sentDateTime desc&$top=3`,
+          // $top bumped from 3 to 25 (matching fetchConversationMessages'
+          // own cap) — still small enough for a normal customer-service
+          // thread, but wide enough to reliably include the *earliest*
+          // sent message too, not just the most recent few. Needed so
+          // firstReplyAt below (used to set first_replied_at, once, the
+          // first time a reply is detected) reflects the actual first
+          // reply rather than whichever happened to be newest at $top=3.
+          url: `/users/${mailbox}/mailFolders/sentitems/messages?$filter=conversationId eq '${encodeURIComponent(escapeODataString(item.conversationId))}'&$select=toRecipients,ccRecipients,sentDateTime&$orderby=sentDateTime desc&$top=25`,
         })),
       };
       const res = await fetch(GRAPH_BATCH_URL, {
@@ -566,7 +576,9 @@ async function fetchReplyStatus(items) {
           .flatMap((m) => [...(m.toRecipients || []), ...(m.ccRecipients || [])])
           .map((rec) => rec.emailAddress?.address)
           .filter(Boolean);
-        results.set(item.graphMessageId, { hasReply: sentMessages.length > 0, recipients });
+        const sentTimes = sentMessages.map((m) => m.sentDateTime).filter(Boolean);
+        const firstReplyAt = sentTimes.length > 0 ? sentTimes.reduce((min, t) => (t < min ? t : min)) : null;
+        results.set(item.graphMessageId, { hasReply: sentMessages.length > 0, recipients, firstReplyAt });
       }
     } catch (err) {
       console.error(`[graph-client] fetchReplyStatus: chunk of ${batch.length} failed, skipping it this cycle:`, err.message);

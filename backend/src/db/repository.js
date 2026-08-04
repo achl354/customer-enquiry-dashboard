@@ -47,6 +47,19 @@ function statusForMissingMessage(confirmedMissing) {
   return confirmedMissing ? 'REMOVED' : null;
 }
 
+// Confirmed directly with staff: their actual "I'm done with this" habit is
+// filing the message into a folder (see the folder tree they shared — PO
+// folders by state, CUST SERVICE EMAILS, etc.), not flagging it or tagging a
+// category. Any move out of Inbox counts as resolved, no exceptions per
+// folder — including a manual delete (Inbox -> Deleted Items also trips
+// this, and that's fine, staff confirmed the simple rule over carving out
+// per-folder meaning). Takes priority over the flag heuristic since this is
+// the confirmed-real habit, not a maybe-used one — but stays below an
+// explicit category tag, which is a deliberate staff action either way.
+function statusForFolderMove(movedOutOfInbox) {
+  return movedOutOfInbox ? 'RESOLVED' : null;
+}
+
 // Status "rank" so reply-detection (and anything similar) can only ever
 // advance an enquiry forward, never undo a status staff already set
 // themselves — e.g. a stale/old reply shouldn't demote a RESOLVED enquiry
@@ -516,4 +529,5 @@ module.exports = {
   statusForCategories,
   statusForReply,
   statusForMissingMessage,
+  statusForFolderMove,
 };

@@ -128,19 +128,53 @@ function escapeODataString(value) {
   return String(value).replace(/'/g, "''");
 }
 
+// Resolved once and cached for the process lifetime — the Inbox's real
+// folder id never changes, so there's no reason to re-resolve the
+// "inbox" well-known name on every poll. Used by fetchMessageFlags below
+// to detect "moved out of Inbox," which is this mailbox's actual
+// resolve-an-enquiry habit (staff file it into a folder rather than
+// flagging it or tagging a category — see fetchMessageFlags for the
+// flag/category channels, which are much less reliably used).
+let cachedInboxFolderId = null;
+
+async function getInboxFolderId() {
+  if (cachedInboxFolderId) return cachedInboxFolderId;
+  const token = await getAccessToken();
+  const mailbox = encodeURIComponent(process.env.MAILBOX);
+  const res = await fetch(`${GRAPH_BASE}/users/${mailbox}/mailFolders/inbox?$select=id`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Graph API error resolving Inbox folder id ${res.status}: ${body}`);
+  }
+  const data = await res.json();
+  cachedInboxFolderId = data.id;
+  return cachedInboxFolderId;
+}
+
 /**
- * Fetch the current Outlook follow-up flag AND category tags for a set of
- * messages (by Graph message id), via the $batch endpoint. The follow-up
- * flag was the original plan for detecting "done", but checking real Sent
- * Items showed it's barely used in practice — genuinely-handled threads
- * routinely have no flag, or one left at 'flagged' rather than 'complete'.
- * Categories are a separate, currently-unused Outlook feature in this
- * mailbox, so they're a cleaner channel for an explicit "Resolved"/"No
- * Action Needed" tag without depending on a habit the team doesn't have.
- * Returns a Map of messageId -> { flagStatus, categories } on success, or
- * { missing: true } for a confirmed 404 (message deleted, or moved
- * somewhere its ID no longer resolves — observed cause in this mailbox:
- * storage-quota cleanup deleting mail after it's been acted on, not before).
+ * Fetch the current Outlook follow-up flag, category tags, AND folder
+ * location for a set of messages (by Graph message id), via the $batch
+ * endpoint. The follow-up flag was the original plan for detecting "done",
+ * but checking real Sent Items showed it's barely used in practice —
+ * genuinely-handled threads routinely have no flag, or one left at
+ * 'flagged' rather than 'complete'. Categories are a separate,
+ * currently-unused Outlook feature in this mailbox, so they're a cleaner
+ * channel for an explicit "Resolved"/"No Action Needed" tag — but staff's
+ * actual habit (confirmed directly) is simpler still: file the message
+ * into a folder once it's handled. `movedOutOfInbox` (parentFolderId no
+ * longer matching the Inbox) captures that directly rather than depending
+ * on a flag/category habit the team doesn't really have.
+ *
+ * Returns a Map of messageId -> { flagStatus, categories, movedOutOfInbox }
+ * on success, or { missing: true } for a confirmed 404 (message deleted,
+ * or moved somewhere its ID no longer resolves at all — observed cause in
+ * this mailbox: storage-quota cleanup deleting mail after it's been acted
+ * on, not before). That's a different thing from movedOutOfInbox — a
+ * normal folder move (e.g. into "11. ONLINE ORDERS") keeps the same id and
+ * resolves fine via this mailbox-wide /messages/{id} lookup regardless of
+ * which folder it's sitting in; only an actually-gone message 404s.
  * Any OTHER non-200 (rate limit, transient 5xx, etc.) is skipped entirely
  * rather than treated as missing — those aren't evidence the message is
  * actually gone, just that this one lookup failed.
@@ -156,6 +190,7 @@ async function fetchMessageFlags(messageIds) {
   if (messageIds.length === 0) return new Map();
   const token = await getAccessToken();
   const mailbox = encodeURIComponent(process.env.MAILBOX);
+  const inboxFolderId = await getInboxFolderId();
   const results = new Map();
 
   for (const batch of chunk(messageIds, BATCH_CHUNK_SIZE)) {
@@ -164,7 +199,7 @@ async function fetchMessageFlags(messageIds) {
         requests: batch.map((id, i) => ({
           id: String(i),
           method: 'GET',
-          url: `/users/${mailbox}/messages/${encodeURIComponent(id)}?$select=flag,categories`,
+          url: `/users/${mailbox}/messages/${encodeURIComponent(id)}?$select=flag,categories,parentFolderId`,
         })),
       };
       const res = await fetch(GRAPH_BATCH_URL, {
@@ -183,6 +218,7 @@ async function fetchMessageFlags(messageIds) {
           results.set(originalId, {
             flagStatus: r.body?.flag?.flagStatus || null,
             categories: r.body?.categories || [],
+            movedOutOfInbox: r.body?.parentFolderId !== inboxFolderId,
           });
         } else if (r.status === 404) {
           results.set(originalId, { missing: true });

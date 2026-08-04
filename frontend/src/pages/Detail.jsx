@@ -321,8 +321,9 @@ export default function Detail() {
               <StatusBadge status={enquiry.status} />
             </div>
             <p className="draft-hint" style={{ margin: '4px 0 0' }}>
-              Synced automatically from Outlook (follow-up flags and replies) — take the
-              actual action (reply, flag) in Outlook and this will catch up on the next poll.
+              Synced automatically from Outlook — moving this out of the Inbox into any
+              folder marks it Resolved, and replies/flags/categories are picked up too.
+              Take the actual action in Outlook and this will catch up on the next poll.
               "Delete" below is the one status change this dashboard sets directly.
             </p>
 

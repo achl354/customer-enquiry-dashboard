@@ -1,6 +1,12 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { statusForFlag, statusForCategories, statusForReply, statusForMissingMessage } = require('./repository');
+const {
+  statusForFlag,
+  statusForCategories,
+  statusForReply,
+  statusForMissingMessage,
+  statusForFolderMove,
+} = require('./repository');
 
 // Pure-function tests for the "how does an enquiry get marked closed" logic
 // — no DB needed for these three. Categories were added after checking real
@@ -66,4 +72,13 @@ test('statusForMissingMessage: a confirmed-missing message becomes REMOVED', () 
 test('statusForMissingMessage: not confirmed missing is not a signal', () => {
   assert.equal(statusForMissingMessage(false), null);
   assert.equal(statusForMissingMessage(undefined), null);
+});
+
+test('statusForFolderMove: moved out of Inbox resolves', () => {
+  assert.equal(statusForFolderMove(true), 'RESOLVED');
+});
+
+test('statusForFolderMove: still in Inbox is not a signal', () => {
+  assert.equal(statusForFolderMove(false), null);
+  assert.equal(statusForFolderMove(undefined), null);
 });

@@ -269,43 +269,49 @@ history and paginates through as many pages as it takes to cover it:
   for that first poll, `[graph-poller] Polled: ...` for every incremental
   one after.
 
-## Status sync (Outlook categories & follow-up flags)
+## Status sync (Outlook folders, categories & follow-up flags)
 
 The dashboard is an add-on triage layer, not the system of record — staff
-take the actual action (reply, mark a thread done) in Outlook, same as
+take the actual action (reply, file the message away) in Outlook, same as
 before this existed, and `status` flows one-way from there into the
-dashboard. It cannot be set manually in the dashboard (`PATCH` rejects a
-`status` field with 400) precisely so it can't drift from what Outlook
-actually shows. Every poll cycle re-checks each open enquiry's category
-tags and follow-up flag via Graph's `$batch` endpoint and syncs the result
-into `status` (`statusForCategories`/`statusForFlag` in `db/repository.js`):
+dashboard. There's no endpoint to set `status` directly, precisely so it
+can't drift from what Outlook actually shows — the one exception is the
+Detail page's "Delete" button (`DELETE /api/enquiries/:id`), which sets a
+dedicated `DISMISSED` status the sync below never touches.
+Every poll cycle re-checks each open enquiry's folder location, category
+tags, and follow-up flag via Graph's `$batch` endpoint and syncs the result
+into `status` (`statusForFolderMove`/`statusForCategories`/`statusForFlag`
+in `db/repository.js`):
 
 - Category **"Resolved"** → dashboard status becomes `RESOLVED`, regardless
   of current status. Category **"No Action Needed"** → `IGNORED`, same way.
-  These are checked first and take precedence over the flag below.
-- Flag set to **Complete** → `RESOLVED` (same as the category, checked as a
-  fallback when no category is set).
+  These are checked first and take precedence over everything below.
+- Moved out of the Inbox into **any** folder → `RESOLVED`. This is staff's
+  actual confirmed habit (filing a message away once it's handled, e.g. into
+  a customer/PO folder) — checked next, ahead of the flag.
+- Flag set to **Complete** → `RESOLVED` (same outcome, checked as a further
+  fallback when neither of the above applies).
 - Flag set to **Flagged** (follow-up, not yet complete) → only advances a
   still-untouched `NEW` enquiry to `IN_PROGRESS`. Never downgrades a more
   advanced status the reply-detection sync (below) already set (e.g.
   `WAITING_ON_CUSTOMER`).
-- Neither present → no change either way; not evidence the enquiry is still new.
+- None of the above → no change either way; not evidence the enquiry is
+  still new.
 
-**Why categories, not just the flag:** checking real Sent Items showed the
-follow-up flag is barely used in practice — genuinely-handled threads
-routinely had no flag at all, or one left at `flagged` rather than
-`complete`. Categories are a separate, currently-unused Outlook feature in
-this mailbox, so they're a clean, unambiguous channel that doesn't depend
-on a habit the team doesn't already have. Staff apply one via Outlook's own
-Categorize menu — same low-friction motion as flagging, just a tag nothing
-else is already using. This is a process change as much as a code one: it
-only works if staff actually tag things "Resolved"/"No Action Needed" when
-they're done.
+**Why folder location, not just categories/flags:** checking real Sent
+Items showed the follow-up flag is barely used in practice —
+genuinely-handled threads routinely had no flag at all, or one left at
+`flagged` rather than `complete`. Categories are a separate,
+currently-unused Outlook feature in this mailbox. Folder location is
+different: it's staff's actual day-to-day filing habit, confirmed directly,
+so it needs no new behavior adopted to work. The tradeoff: moving a message
+to Deleted Items also counts as "resolved" (any move out of Inbox, no
+per-folder exceptions) — a deliberate simplification, not an oversight.
 
 This runs as part of every `runPollOnce()` (scheduled poll or manual
 `POST /api/ingest/run`), which now also returns `flagsChecked`/`flagsUpdated`
 counts. There's no reverse direction — the dashboard never writes a flag,
-category, or anything else back to Outlook.
+category, folder move, or anything else back to Outlook.
 
 ## Status sync (reply/forward detection)
 

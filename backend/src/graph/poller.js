@@ -292,6 +292,72 @@ function getBackfillStatus() {
   };
 }
 
+// Own in-flight slot, separate from backfillInFlight above — this is a much
+// smaller, targeted job (one facility's enquiries, no Graph fetch at all,
+// since it only reassesses rows already in the database) rather than a
+// mailbox-wide catch-up, so it doesn't need to share a lock with it. Same
+// "one operator, one job at a time" assumption as the backfill guard,
+// though: triggering this at the same time as a full backfill could still
+// double-call the classifier on any row both happen to cover.
+let facilityReclassifyInFlight = null;
+let lastFacilityReclassifyResult = null;
+let lastFacilityReclassifyFinishedAt = null;
+
+/**
+ * Re-run classification against every enquiry currently attributed to one
+ * facility — the "Reclassify" action on the Top facilities panel, for when
+ * staff notice one customer's mail keeps landing in the wrong category.
+ * Purely a DB operation, no Graph call: facility is extracted at ingestion
+ * time and already stored, so there's nothing to re-fetch, just
+ * reclassifyEnquiry() re-run over the matching rows (see
+ * backfillAllFoldersAndReassess above for the same reassess step at
+ * mailbox scope). Same fire-and-poll shape as that job, for the same
+ * reason — a facility with enough history can still be dozens of real AI
+ * calls, easily enough to outlast a proxy's idle-connection timeout.
+ */
+async function reclassifyByFacility(facility) {
+  if (facilityReclassifyInFlight) return facilityReclassifyInFlight;
+
+  facilityReclassifyInFlight = (async () => {
+    const candidates = repo.listEnquiriesByFacility(facility);
+    let reclassified = 0;
+    let failed = 0;
+    for (const row of candidates) {
+      try {
+        await repo.reclassifyEnquiry(row);
+        reclassified += 1;
+      } catch (err) {
+        failed += 1;
+        console.error(`[graph-poller] reclassifyByFacility(${facility}): reclassify failed for ${row.id}:`, err.message);
+      }
+    }
+    return { facility, reassessed: candidates.length, reclassified, failed };
+  })()
+    .then((result) => {
+      lastFacilityReclassifyResult = { ...result, error: null };
+      return result;
+    })
+    .catch((err) => {
+      lastFacilityReclassifyResult = { facility, error: err.message };
+      throw err;
+    })
+    .finally(() => {
+      lastFacilityReclassifyFinishedAt = new Date().toISOString();
+      facilityReclassifyInFlight = null;
+    });
+
+  return facilityReclassifyInFlight;
+}
+
+/** Polled by GET /api/ingest/reclassify-by-facility-status — see the comment above facilityReclassifyInFlight. */
+function getFacilityReclassifyStatus() {
+  return {
+    running: facilityReclassifyInFlight !== null,
+    lastResult: lastFacilityReclassifyResult,
+    lastFinishedAt: lastFacilityReclassifyFinishedAt,
+  };
+}
+
 /**
  * Start a scheduled poll (default every minute — override with
  * POLL_CRON_EXPRESSION, e.g. '*\/5 * * * *' for every 5 minutes, if
@@ -326,5 +392,7 @@ module.exports = {
   syncReplyStatuses,
   backfillAllFoldersAndReassess,
   getBackfillStatus,
+  reclassifyByFacility,
+  getFacilityReclassifyStatus,
   startScheduledPolling,
 };

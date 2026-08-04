@@ -105,17 +105,20 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 | `PATCH /api/enquiries/:id/category` | Manual recategorization (`status` has no direct-set endpoint at all — it's derived from Outlook, see "Status sync" below, with `DELETE` as the one dashboard-native exception) |
 | `DELETE /api/enquiries/:id` | Detail page's "Delete" — sets `DISMISSED`, doesn't touch the real mailbox |
 | `GET /api/enquiries/export` | CSV export — same filters as the list endpoint, no pagination. Lean reporting column set (no draft/body content) |
-| `GET /api/stats/overview` | Counts by category/status/priority/facility, aging buckets, open workload by assignee, avg resolution time (gated behind a minimum sample size) |
+| `GET /api/stats/overview` | Counts by category/status/priority/facility, aging buckets, open workload by assignee, avg resolution time and resolved count (returned for other callers/history's sake — Overview no longer shows these as standalone stat tiles; see "Resolution time by priority" and the resolution-trend panel instead) |
 | `GET /api/stats/volume-trend?granularity=day\|week\|month\|quarter` | Received vs. resolved counts by period, since `TOTAL_SINCE` — see "KPI trend panels" below |
 | `GET /api/stats/resolution-trend?granularity=month\|quarter\|year&sla=<hours>` | Avg. resolution time + SLA compliance rate rolled up by period, all-time; `sla` defaults to 48 |
 | `GET /api/stats/first-response-trend?granularity=month\|quarter\|year` | Avg. time to first reply by period, all-time, forward-looking only (see "First response time") |
 | `GET /api/stats/resolution-by-priority` | Avg. resolution time per priority tier, all-time snapshot (no granularity) |
 | `GET /api/stats/backlog-trend?granularity=month\|quarter\|year` | Open-enquiry count at the end of each period — an approximation, see "Backlog trend" below |
+| `GET /api/stats/status-by-period?granularity=day\|month\|quarter` | Status mix of enquiries *received* in the current day/month/fiscal-quarter — see "Status mix donut" below |
 | `GET /api/ingest/status` | Whether live Graph polling and AI classification are configured |
 | `POST /api/ingest/run` | Manually trigger one poll cycle (Inbox only) |
 | `GET /api/ingest/folder-map?mailbox=<address>` | CSV of every mail folder, walked by id — see "Folder tree enumeration" below |
 | `POST /api/ingest/backfill-all-folders?since=<date>&until=<date>` | Starts the one-off historical catch-up across every folder + full reassessment; `until` (exclusive) is optional, for bounding to a specific window; returns `202` immediately — see "Historical catch-up" below |
 | `GET /api/ingest/backfill-status` | Poll this for the backfill's progress/result — `{running, lastResult, lastFinishedAt}` |
+| `POST /api/ingest/reclassify-by-facility` `{facility}` | "Reclassify" action on the Top facilities panel — re-runs the classifier against every enquiry currently attributed to `facility` (no Graph config needed). Returns `202` immediately — see "Reclassify by facility" below |
+| `GET /api/ingest/reclassify-by-facility-status` | Poll this for that job's progress/result — `{running, lastResult, lastFinishedAt}` |
 | `GET /api/ingest/folder-messages?since=<date>&mailbox=<address>` | Read-only streamed CSV audit export, ~32 active folders by default (`?allFolders=true` for all ~380) — see "Folder audit export" below |
 
 ## AI classification
@@ -432,11 +435,11 @@ re-querying Graph for `lastModifiedDateTime` on any `RESOLVED` enquiry
 still missing it. This population only shrinks over time (as backfill
 succeeds) or stays flat (for messages confirmed gone, which have nothing
 to recover) — it never grows, since new resolutions get `resolved_at` set
-immediately going forward. `overviewStats()` only averages rows that
-actually have a `resolved_at`, so the Overview tile explicitly
-distinguishes "no resolved enquiries yet" from "N resolved, but timing
-data isn't available yet" (the latter is normal right after deploying this
-— it clears up as the backfill runs).
+immediately going forward. `overviewStats()` (and the resolution-time
+trend/by-priority panels below) only average rows that actually have a
+`resolved_at` — a resolved enquiry with no timing data yet (normal right
+after deploying this, until the backfill catches up) simply isn't counted
+in the average rather than guessed at.
 
 ## KPI trend panels (`/stats/volume-trend`, `/stats/resolution-trend`, `/stats/first-response-trend`, `/stats/resolution-by-priority`, `/stats/backlog-trend`)
 
@@ -501,6 +504,26 @@ if it was resolved before that column existed (see `backfillResolvedAt` in
 graph/poller.js, the active repair pass that shrinks this gap over time).
 Accepted given the volume this affects is small, rather than adding a
 second closure-timestamp column for a KPI this workflow-adjacent.
+
+## Status mix donut (`/stats/status-by-period`)
+
+Replaced the old "Enquiries by status" bar list on Overview — same
+underlying counts, but as a donut with a Day/Month/Quarter toggle scoping
+it to *enquiries received in* the current (possibly still in-progress)
+period, rather than a single all-time-since-`TOTAL_SINCE` snapshot. "What's
+the status mix of what came in today/this month/this quarter" reads as a
+more useful operational question than "what's the status mix of
+everything since tracking began" — that all-time view is still available,
+just via the Queue page's own status filter rather than a dedicated panel.
+
+No "year" granularity (day/month/quarter only) — deliberately matches what
+was asked for, not the KPI trend panels' month/quarter/year set. Segment
+order follows a fixed status order, not sorted by value, same "color
+follows the entity, never its rank" reasoning as everywhere else colors
+are assigned by identity on this page. Every segment's count/share is
+always shown in the legend (never gated behind hover) — hovering or
+focusing a segment (mouse or keyboard) additionally shows a tooltip and
+dims the others.
 
 ## Folder tree enumeration (`/folder-map`)
 
@@ -601,6 +624,30 @@ longer aborts the whole run either — both the ingest loop and the
 reclassify loop catch per-item errors and keep going, counted in
 `failedIngest`/`failed` respectively, so one bad message can't silently
 skip everything after it.
+
+## Reclassify by facility (`/ingest/reclassify-by-facility`)
+
+A smaller, targeted sibling of the backfill above — the "↻" button on each
+row of Overview's Top facilities panel. Re-runs the classifier against
+every enquiry currently attributed to that facility, for when staff spot
+that one customer's mail keeps landing in the wrong category. Purely a DB
++ AI-classifier operation, no Graph call at all (facility is already
+stored from ingestion) — and no `TOTAL_SINCE` scoping either: every
+enquiry with that facility gets reassessed, including ones from before the
+reporting window the panel itself is scoped to, so the confirm dialog
+describes the scope in words rather than quoting a count that wouldn't
+match what's on screen.
+
+Same fire-and-`202`-then-poll shape as `/backfill-all-folders`, for the
+same reason (a facility with enough history is still real, sequential AI
+calls, easily enough to outlast a proxy's idle-connection timeout) — poll
+`GET /api/ingest/reclassify-by-facility-status` for `{running, lastResult,
+lastFinishedAt}`. Its own in-flight slot, separate from the backfill job's,
+since this is deliberately a much smaller/faster operation that shouldn't
+have to wait its turn behind a mailbox-wide catch-up — though triggering
+both at once could still double-call the classifier on any row they
+happen to both cover (same "one operator, one job" assumption as
+everywhere else this pattern is used).
 
 ## Folder audit export (`/folder-messages`)
 

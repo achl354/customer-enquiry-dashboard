@@ -89,6 +89,24 @@ export function getVolumeTrend(granularity, options = {}) {
   return request(`/stats/volume-trend?granularity=${encodeURIComponent(granularity)}`, options);
 }
 
+export function getStatusByPeriod(granularity, options = {}) {
+  return request(`/stats/status-by-period?granularity=${encodeURIComponent(granularity)}`, options);
+}
+
 export function getIngestStatus() {
   return request('/ingest/status');
+}
+
+// Fire-and-poll, same shape as the backfill job below — POST starts it
+// (202, `{started, running, message}`), GET the status endpoint for
+// progress/result (`{running, lastResult, lastFinishedAt}`).
+export function reclassifyByFacility(facility) {
+  return request('/ingest/reclassify-by-facility', {
+    method: 'POST',
+    body: JSON.stringify({ facility }),
+  });
+}
+
+export function getReclassifyByFacilityStatus(options = {}) {
+  return request('/ingest/reclassify-by-facility-status', options);
 }

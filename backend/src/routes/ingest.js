@@ -1,5 +1,12 @@
 const express = require('express');
-const { runPollOnce, backfillAllFoldersAndReassess, getBackfillStatus, isGraphConfigured } = require('../graph/poller');
+const {
+  runPollOnce,
+  backfillAllFoldersAndReassess,
+  getBackfillStatus,
+  reclassifyByFacility,
+  getFacilityReclassifyStatus,
+  isGraphConfigured,
+} = require('../graph/poller');
 const graphClient = require('../graph/client');
 const aiClassifier = require('../ai/classifier');
 const { csvField, toCsv } = require('../utils/csv');
@@ -237,6 +244,43 @@ router.post('/backfill-all-folders', async (req, res) => {
 // summary (or {error} if the run failed outright).
 router.get('/backfill-status', (req, res) => {
   res.json(getBackfillStatus());
+});
+
+// "Reclassify" action on the Overview page's Top facilities panel — re-runs
+// the classifier against every enquiry currently attributed to `facility`.
+// No Graph config needed (unlike /backfill-all-folders): facility is
+// already stored from ingestion, so this is a pure DB + AI-classifier
+// operation. Fires and returns 202 immediately, same reasoning as
+// /backfill-all-folders — poll GET /reclassify-by-facility-status.
+router.post('/reclassify-by-facility', (req, res) => {
+  const { facility } = req.body || {};
+  if (!facility || typeof facility !== 'string') {
+    return res.status(400).json({ error: 'facility (non-empty string) is required' });
+  }
+
+  if (getFacilityReclassifyStatus().running) {
+    return res.status(202).json({
+      started: false,
+      running: true,
+      message: 'A facility reclassify is already running. Poll GET /api/ingest/reclassify-by-facility-status for progress.',
+    });
+  }
+
+  reclassifyByFacility(facility).catch((err) => {
+    console.error('[ingest] reclassify-by-facility: failed:', err.message);
+  });
+
+  res.status(202).json({
+    started: true,
+    message: 'Reclassify started in the background. Poll GET /api/ingest/reclassify-by-facility-status for progress and the final result.',
+  });
+});
+
+// Poll this after POSTing /reclassify-by-facility. `running: true` while
+// still going; once false, `lastResult` holds {facility, reassessed,
+// reclassified, failed} (or {facility, error} if the run failed outright).
+router.get('/reclassify-by-facility-status', (req, res) => {
+  res.json(getFacilityReclassifyStatus());
 });
 
 // Full audit pull, read-only — every message received on/after `since`,

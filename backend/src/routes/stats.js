@@ -5,6 +5,7 @@ const router = express.Router();
 
 const PERIOD_GRANULARITIES = ['month', 'quarter', 'year'];
 const VOLUME_GRANULARITIES = ['day', 'week', 'month', 'quarter'];
+const STATUS_GRANULARITIES = ['day', 'month', 'quarter'];
 
 function validateGranularity(req, res, allowed) {
   const granularity = req.query.granularity || (allowed.includes('month') ? 'month' : allowed[0]);
@@ -63,6 +64,16 @@ router.get('/volume-trend', (req, res) => {
   const granularity = validateGranularity(req, res, VOLUME_GRANULARITIES);
   if (!granularity) return;
   res.json(repo.volumeTrend(granularity));
+});
+
+// Status mix of enquiries *received* in the current day/month/fiscal-
+// quarter — a narrower window than /overview's byStatus (since
+// TOTAL_SINCE, all of it). Powers the Overview status donut's toggle. No
+// "year" here — see statusByPeriod in db/repository.js.
+router.get('/status-by-period', (req, res) => {
+  const granularity = validateGranularity(req, res, STATUS_GRANULARITIES);
+  if (!granularity) return;
+  res.json(repo.statusByPeriod(granularity));
 });
 
 module.exports = router;

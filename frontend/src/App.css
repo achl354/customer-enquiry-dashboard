@@ -738,6 +738,60 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* Adds a 4th column for a per-row action (the Top facilities panel's
+   "Reclassify" button) — only applied when BarList is given
+   `renderAction`, so every other bar list keeps its original 3-column
+   layout untouched. */
+.bar-list-with-actions .bar-row {
+  grid-template-columns: 160px 1fr 44px 28px;
+}
+
+.bar-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bar-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.bar-action-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+.bar-action-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--series-1) 12%, transparent);
+  color: var(--series-1);
+}
+
+.bar-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bar-action-btn.spinning svg {
+  animation: bar-action-spin 0.9s linear infinite;
+}
+
+@keyframes bar-action-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 /* Trend chart */
 .trend-chart {
   position: relative;
@@ -803,6 +857,103 @@
   height: 8px;
   border-radius: 50%;
   flex-shrink: 0;
+}
+
+/* Donut chart (status mix) */
+.donut-chart {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+
+.donut-chart-body {
+  position: relative;
+  flex-shrink: 0;
+  width: clamp(120px, 16vw, 180px);
+}
+
+.donut-chart-svg {
+  width: 100%;
+  display: block;
+}
+
+.donut-segment {
+  cursor: pointer;
+  outline: none;
+  transition: opacity 0.15s ease;
+}
+
+/* Dims every segment but the hovered one, same "lift the hovered mark"
+   idea as bar/line hover elsewhere — cheaper than an actual lift for an
+   arc, and reads just as clearly against neighboring segments. */
+.donut-chart:has(.donut-segment-hovered) .donut-segment:not(.donut-segment-hovered) {
+  opacity: 0.35;
+}
+
+.donut-center-value {
+  font-size: 28px;
+  font-weight: 600;
+  fill: var(--text-primary);
+}
+
+.donut-center-label {
+  font-size: 11px;
+  fill: var(--text-muted);
+}
+
+.donut-chart-tooltip {
+  transform: translate(-50%, calc(-100% - 10px));
+}
+
+.donut-legend {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.donut-legend-item {
+  gap: 8px;
+  transition: opacity 0.15s ease;
+}
+
+.donut-chart:has(.donut-segment-hovered) .donut-legend-item:not(.donut-legend-item-hovered) {
+  opacity: 0.5;
+}
+
+.donut-legend-label {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.donut-legend-value {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  margin-left: auto;
+  padding-left: 8px;
+  white-space: nowrap;
+}
+
+/* `display: contents` keeps the anchor out of the box model entirely
+   (the <li>'s own flex layout does the work) while its rendered children
+   still form its click target — same effect as BarList's whole-row Link,
+   without needing to restructure the legend row's markup around it. */
+.donut-legend-item-link a {
+  display: contents;
+  color: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.donut-legend-item-link:hover .donut-legend-label {
+  color: var(--text-primary);
 }
 
 /* Filter bar */

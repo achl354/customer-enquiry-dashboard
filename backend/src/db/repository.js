@@ -418,6 +418,15 @@ function listEnquiriesReceivedSince(sinceIso, untilIso) {
   return db.prepare('SELECT * FROM enquiries WHERE received_at >= ?').all(sinceIso);
 }
 
+// Same idea, scoped to one facility instead of a date window — backs the
+// "reclassify all from this facility" action on the Top facilities panel
+// (see reclassifyByFacility in graph/poller.js). Every enquiry currently
+// attributed to that facility name gets reassessed, regardless of current
+// category/classifiedBy, same as the date-scoped version above.
+function listEnquiriesByFacility(facility) {
+  return db.prepare('SELECT * FROM enquiries WHERE facility = ?').all(facility);
+}
+
 // Reconstructs the flat "raw email" shape classifyEmail()/classify() expect
 // (see triage/classify.js's jsdoc) directly from an already-stored row —
 // reclassification never needs a fresh Graph call, since everything the
@@ -691,6 +700,35 @@ function backlogTrend(granularity) {
     openAtEnd: backlogAtStmt.get({ asOf: endExclusiveIso }).c,
   }));
 }
+
+// Start of the current (possibly still in-progress) day/month/fiscal-quarter
+// — reuses enumeratePeriodEnds' own period-stepping for month/quarter (its
+// last entry, by construction, is whichever period `now` currently falls
+// in) rather than duplicating that fiscal-boundary math a third time. Day
+// isn't one of enumeratePeriodEnds' granularities (it steps in months), so
+// that case is handled directly here instead.
+function currentPeriodStart(granularity) {
+  if (granularity === 'day') {
+    const now = new Date();
+    return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
+  }
+  if (granularity === 'month' || granularity === 'quarter') {
+    const ends = enumeratePeriodEnds(granularity);
+    return ends[ends.length - 1].periodStart.toISOString();
+  }
+  throw new Error(`Invalid granularity: ${granularity}. Use day, month, or quarter.`);
+}
+
+// Status mix of enquiries *received* in the current day/month/fiscal-
+// quarter — narrower than the by-status breakdown overviewStats() already
+// returns (that one is since TOTAL_SINCE, all of it). Powers the Overview
+// status donut's granularity toggle: "what's the status mix of what came
+// in today/this month/this quarter" rather than "since tracking began."
+function statusByPeriod(granularity) {
+  const sinceIso = currentPeriodStart(granularity);
+  const rows = db.prepare('SELECT status, COUNT(*) as count FROM enquiries WHERE received_at >= ? GROUP BY status').all(sinceIso);
+  return { since: sinceIso, byStatus: Object.fromEntries(rows.map((r) => [r.status, r.count])) };
+}
 // Scoped to TOTAL_SINCE, same as the "Total enquiries" stat this chart sits
 // next to — querying all-time here (as this used to) mixes in pre-tracking
 // seed/backfill data "Total enquiries" deliberately excludes, so the two
@@ -891,6 +929,7 @@ module.exports = {
   listOpenEnquiriesForReplySync,
   listResolvedEnquiriesMissingResolvedAt,
   listEnquiriesReceivedSince,
+  listEnquiriesByFacility,
   reclassifyEnquiry,
   statusForFlag,
   statusForCategories,
@@ -903,4 +942,5 @@ module.exports = {
   resolutionTimeByPriority,
   backlogTrend,
   volumeTrend,
+  statusByPeriod,
 };

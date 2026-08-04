@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   getOverviewStats,
@@ -8,11 +8,15 @@ import {
   getResolutionByPriority,
   getBacklogTrend,
   getVolumeTrend,
+  getStatusByPeriod,
+  reclassifyByFacility,
+  getReclassifyByFacilityStatus,
 } from '../api';
 import { BarList } from '../components/BarList';
 import { DualTrendChart } from '../components/DualTrendChart';
+import { DonutChart } from '../components/DonutChart';
 import { OverviewSkeleton } from '../components/Skeletons';
-import { IconLayers, IconInbox, IconAlertTriangle, IconClock, IconEye } from '../components/Icons';
+import { IconLayers, IconInbox, IconAlertTriangle, IconRefresh } from '../components/Icons';
 import { categoryLabel, statusLabel, priorityLabel } from '../taxonomy';
 import { useCountUp } from '../hooks/useCountUp';
 import { usePeriodTrend } from '../hooks/usePeriodTrend';
@@ -49,10 +53,6 @@ const AGING_COLORS = {
   '7d+': 'var(--status-critical)',
 };
 
-// Below this many resolved enquiries, an average is more noise than signal
-// — showing "14.3h" from 2 data points reads as precise when it isn't.
-const MIN_RESOLVED_SAMPLE = 5;
-
 // Same colors these two concepts already use elsewhere on this page (New =
 // series-1, Resolved = status-good) — reused here rather than picked fresh,
 // so "received" and "resolved" read the same way in every chart.
@@ -83,6 +83,12 @@ const VOLUME_GRANULARITIES = [
   { key: 'month', label: 'Month' },
   { key: 'quarter', label: 'Quarter' },
 ];
+const STATUS_GRANULARITIES = [
+  { key: 'day', label: 'Day' },
+  { key: 'month', label: 'Month' },
+  { key: 'quarter', label: 'Quarter' },
+];
+const STATUS_PERIOD_NOUN = { day: 'today', month: 'this month', quarter: 'this quarter' };
 
 // Period strings come straight from the backend's SQL grouping (see
 // resolutionTimeTrend in db/repository.js): "2026-07" for month (calendar),
@@ -155,6 +161,26 @@ export default function Overview() {
   const [firstResponseGranularity, setFirstResponseGranularity] = useState('month');
   const [backlogGranularity, setBacklogGranularity] = useState('month');
   const [volumeGranularity, setVolumeGranularity] = useState('day');
+  const [statusGranularity, setStatusGranularity] = useState('month');
+
+  // Facility-scoped reclassify (Top facilities panel) — one at a time,
+  // fire-and-poll same as the mailbox-wide backfill job (see
+  // reclassifyByFacility in graph/poller.js). reclassifyCancelRef guards
+  // the poll loop's setState calls against firing after this page has
+  // navigated away mid-poll. The effect body resets the flag to false, not
+  // just the cleanup setting it true — React 18 StrictMode double-invokes
+  // this effect once in dev (mount -> effect -> cleanup -> effect again),
+  // and a cleanup-only version left the ref permanently `true` after that
+  // synthetic cleanup with nothing to ever flip it back, silently killing
+  // every poll loop's first status check before it could schedule a
+  // second one.
+  const [reclassifyingFacility, setReclassifyingFacility] = useState(null);
+  const [reclassifyResult, setReclassifyResult] = useState(null);
+  const reclassifyCancelRef = useRef(false);
+  useEffect(() => {
+    reclassifyCancelRef.current = false;
+    return () => { reclassifyCancelRef.current = true; };
+  }, []);
 
   useEffect(() => {
     const load = () => getOverviewStats().then(setStats).catch((e) => setError(e.message));
@@ -181,14 +207,13 @@ export default function Overview() {
   const backlogTrend = usePeriodTrend(getBacklogTrend, backlogGranularity);
   const volumeTrend = usePeriodTrend(getVolumeTrend, volumeGranularity);
   const priorityTrend = usePeriodTrend((_g, opts) => getResolutionByPriority(opts), 'all');
+  const statusTrend = usePeriodTrend(getStatusByPeriod, statusGranularity);
 
   // Hooks must run unconditionally, so these all sit above the
   // loading/error early-returns below, fed with `null` until stats arrive.
   const totalDisplay = useCountUp(stats?.total ?? null);
   const openDisplay = useCountUp(stats?.openCount ?? null);
   const urgentDisplay = useCountUp(stats?.urgentOpen ?? null);
-  const avgResolutionDisplay = useCountUp(stats?.avgResolutionHours ?? null, { decimals: 1 });
-  const lowConfidenceDisplay = useCountUp(stats?.lowConfidenceCount ?? null);
 
   // Memoized since these are pure functions of `stats` alone, but Overview
   // re-renders on every useCountUp animation tick (up to 5 concurrent
@@ -202,14 +227,18 @@ export default function Overview() {
       .sort((a, b) => b.value - a.value);
   }, [stats]);
 
-  const statusData = useMemo(() => {
-    if (!stats) return [];
-    return STATUS_ORDER.filter((s) => stats.byStatus[s]).map((key) => ({
+  // Donut segment order follows STATUS_ORDER (fixed, never re-sorted by
+  // value) so a status keeps the same clock position release over
+  // release — "color follows the entity, never its rank."
+  const statusDonutData = useMemo(() => {
+    if (!statusTrend.data) return [];
+    return STATUS_ORDER.map((key) => ({
       key,
-      value: stats.byStatus[key],
+      value: statusTrend.data.byStatus[key] || 0,
       label: statusLabel(key),
+      color: STATUS_COLORS[key],
     }));
-  }, [stats]);
+  }, [statusTrend.data]);
 
   const facilityData = useMemo(() => {
     if (!stats) return [];
@@ -267,6 +296,60 @@ export default function Overview() {
       }));
   }, [priorityTrend.data]);
 
+  // Fires the facility-scoped reclassify job, then polls its status until
+  // done (same 202-then-poll shape as the mailbox-wide backfill — see
+  // reclassifyByFacility/getReclassifyByFacilityStatus in api.js). Scoped
+  // to *every* enquiry currently attributed to `facility`, not just the
+  // ones counted in this panel's since-TOTAL_SINCE total — the confirm
+  // copy says so rather than quoting a number that wouldn't match.
+  async function handleReclassifyFacility(facility) {
+    if (reclassifyingFacility) return;
+    const confirmed = window.confirm(
+      `Reclassify all enquiries currently attributed to "${facility}"?\n\nThis re-runs AI classification and may change category, priority, or status — including any enquiries from before the reporting window shown here.`
+    );
+    if (!confirmed) return;
+
+    setReclassifyingFacility(facility);
+    setReclassifyResult(null);
+    try {
+      await reclassifyByFacility(facility);
+    } catch (e) {
+      if (reclassifyCancelRef.current) return;
+      setReclassifyingFacility(null);
+      setReclassifyResult({ facility, message: `Failed to start: ${e.message}` });
+      return;
+    }
+
+    const poll = async () => {
+      let status;
+      try {
+        status = await getReclassifyByFacilityStatus();
+      } catch (e) {
+        if (reclassifyCancelRef.current) return;
+        setReclassifyingFacility(null);
+        setReclassifyResult({ facility, message: `Failed to check progress: ${e.message}` });
+        return;
+      }
+      if (reclassifyCancelRef.current) return;
+      if (status.running) {
+        setTimeout(poll, 2000);
+        return;
+      }
+      setReclassifyingFacility(null);
+      const result = status.lastResult;
+      if (!result || result.error) {
+        setReclassifyResult({ facility, message: `Failed: ${result?.error || 'unknown error'}` });
+      } else {
+        setReclassifyResult({
+          facility,
+          message: `Reclassified ${result.reclassified}/${result.reassessed}${result.failed ? `, ${result.failed} failed` : ''}.`,
+        });
+        getOverviewStats().then(setStats).catch(() => {});
+      }
+    };
+    setTimeout(poll, 1500);
+  }
+
   if (error) return <div className="error-state">Failed to load stats: {error}</div>;
   if (!stats) return <OverviewSkeleton />;
 
@@ -276,27 +359,6 @@ export default function Overview() {
     weeklyDelta === 0
       ? 'same as last week'
       : `${weeklyDelta > 0 ? '+' : ''}${weeklyDelta} vs last week`;
-
-  const hasEnoughResolved = stats.resolvedCount >= MIN_RESOLVED_SAMPLE;
-  // resolvedCount only counts RESOLVED enquiries with a known resolved_at
-  // (see resolutionStatsStmt in db/repository.js) — distinct from the true
-  // all-time total, since a resolution detected before the resolved_at
-  // column existed, or one whose source message is confirmed gone, has no
-  // timing data to average even though it's genuinely resolved. Uses
-  // totalResolvedAllTime rather than byStatus.RESOLVED — byStatus is now
-  // scoped to the same since-1-July window as "Total enquiries" (see
-  // byStatusStmt in db/repository.js), which would wrongly read as "no
-  // resolved enquiries yet" if every resolved one predated that window,
-  // even though avgResolutionHours below is itself all-time.
-  const totalResolved = stats.totalResolvedAllTime || 0;
-  const resolutionTimeHint =
-    totalResolved === 0
-      ? 'No resolved enquiries yet'
-      : stats.resolvedCount === 0
-        ? `${totalResolved} resolved, but timing data isn't available yet`
-        : hasEnoughResolved
-          ? `based on ${stats.resolvedCount} resolved`
-          : `only ${stats.resolvedCount} resolved so far — too few for a reliable average`;
 
   // "Total enquiries" counts from a fixed reporting start date (backend
   // constant, not the mailbox's actual first-ever message) — without a
@@ -348,30 +410,6 @@ export default function Overview() {
             <div className="label">Urgent &amp; open</div>
           </div>
           <div className={`value ${stats.urgentOpen > 0 ? 'critical' : ''}`}>{urgentDisplay}</div>
-        </Link>
-      </div>
-
-      <div className="stat-grid-secondary">
-        <Link to="/queue?status=RESOLVED" className="stat-tile stat-tile-in stat-tile-quiet stat-tile-link" style={{ animationDelay: '180ms' }}>
-          <div className="stat-tile-header">
-            <IconClock className="stat-icon" />
-            <div className="label">Avg. resolution time</div>
-          </div>
-          <div className="value">
-            {hasEnoughResolved ? `${avgResolutionDisplay}h` : '—'}
-          </div>
-          <div className="draft-hint">{resolutionTimeHint}</div>
-        </Link>
-        <Link
-          to="/queue?lowConfidence=true"
-          className={`stat-tile stat-tile-in stat-tile-quiet stat-tile-link${stats.lowConfidenceCount > 0 ? ' attention' : ''}`}
-          style={{ animationDelay: '240ms' }}
-        >
-          <div className="stat-tile-header">
-            <IconEye className="stat-icon" />
-            <div className="label">Low-confidence (needs review)</div>
-          </div>
-          <div className={`value ${stats.lowConfidenceCount > 0 ? 'critical' : ''}`}>{lowConfidenceDisplay}</div>
         </Link>
       </div>
 
@@ -489,19 +527,45 @@ export default function Overview() {
         </div>
 
         <div className="panel">
-          <h3>Enquiries by status{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
-          <BarList
-            data={statusData}
-            colorFor={(key) => STATUS_COLORS[key]}
-            linkTo={(key) => `/queue?status=${encodeURIComponent(key)}`}
-          />
+          <div className="panel-header-row">
+            <h3>Status mix, {STATUS_PERIOD_NOUN[statusGranularity]}</h3>
+            <GranularityToggle granularities={STATUS_GRANULARITIES} value={statusGranularity} onChange={setStatusGranularity} />
+          </div>
+          <TrendPanelBody
+            error={statusTrend.error}
+            loading={statusTrend.loading}
+            data={statusDonutData}
+            emptyMessage={`No enquiries received ${STATUS_PERIOD_NOUN[statusGranularity]} yet.`}
+          >
+            <DonutChart data={statusDonutData} linkTo={(key) => `/queue?status=${encodeURIComponent(key)}`} />
+          </TrendPanelBody>
         </div>
       </div>
 
       <div className="panel">
-        <h3>Top facilities / organisations{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
+        <div className="panel-header-row">
+          <h3>Top facilities / organisations{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
+        </div>
+        {reclassifyResult && (
+          <p className="draft-hint" style={{ marginTop: 0, marginBottom: 10 }}>
+            "{reclassifyResult.facility}": {reclassifyResult.message}
+          </p>
+        )}
         {facilityData.length > 0 ? (
-          <BarList data={facilityData} />
+          <BarList
+            data={facilityData}
+            renderAction={(key) => (
+              <button
+                type="button"
+                className={`bar-action-btn${reclassifyingFacility === key ? ' spinning' : ''}`}
+                disabled={reclassifyingFacility !== null}
+                title={`Reclassify all enquiries from "${key}"`}
+                onClick={() => handleReclassifyFacility(key)}
+              >
+                <IconRefresh />
+              </button>
+            )}
+          />
         ) : (
           <p className="draft-hint" style={{ margin: 0 }}>No facility data yet.</p>
         )}

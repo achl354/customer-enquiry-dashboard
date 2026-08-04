@@ -35,6 +35,13 @@ const FOLDER_WALK_DELAY_MS = Number(process.env.FOLDER_WALK_DELAY_MS) || 300;
 // mailboxes don't nest this deep, so hitting this means something's wrong
 // rather than "just needs a higher limit."
 const MAX_FOLDER_DEPTH = 20;
+// Purely a runaway-loop guard for fetchAllFolderMessagesSince below, not a
+// deliberate truncation — at $top=999 this is ~200k messages in one folder
+// since the given date, far beyond anything a real per-folder query since a
+// specific date should ever return. No global cap across folders: this is
+// an explicit one-off audit run, not routine polling, so completeness
+// matters more than a bound on total runtime.
+const MAX_FOLDER_MESSAGE_PAGES = 200;
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -275,6 +282,86 @@ async function fetchFolderTree(mailboxEmail) {
   }
 
   return Array.from(folders.values()).map((f) => ({ ...f, fullPath: fullPathFor(f.id, new Set()) }));
+}
+
+/**
+ * Full audit pull: every message received on/after `sinceIso`, from EVERY
+ * folder in the mailbox (not just leaves — a parent folder can hold
+ * messages directly too), attributed with the folder it was found in.
+ * Calls fetchFolderTree fresh at the start so folder_path is always
+ * consistent with the current tree, then queries
+ * /mailFolders/{id}/messages?$filter=receivedDateTime ge {sinceIso} for
+ * each folder in turn, paginating fully via @odata.nextLink.
+ *
+ * A single folder failing (repeated 429s past fetchWithBackoff's retry
+ * budget, a permissions quirk on a system folder, etc.) is recorded in
+ * folderErrors and skipped — it does not abort the run, same reasoning as
+ * every other bulk operation in this file: one bad folder out of ~380
+ * shouldn't throw away everything already pulled from the rest.
+ *
+ * Returns { messages, folderErrors, foldersChecked }. Each message is
+ * { folderId, folderPath, subject, sender, recipients, receivedDateTime,
+ * lastModifiedDateTime, hasAttachments, conversationId, internetMessageId }.
+ * lastModifiedDateTime is Graph's own "last touched" timestamp — a proxy
+ * for when a message was filed/archived, NOT a confirmed move date (it
+ * also updates on read-status, categorization, or flagging changes). The
+ * caller (routes/ingest.js) is responsible for labeling it as such in any
+ * output — this function itself makes no claim about what the timestamp
+ * means beyond what Graph documents.
+ */
+async function fetchAllFolderMessagesSince(mailboxEmail, sinceIso) {
+  const token = await getAccessToken();
+  const mailbox = encodeURIComponent(mailboxEmail);
+  const folders = await fetchFolderTree(mailboxEmail);
+  const select = '$select=id,internetMessageId,subject,receivedDateTime,lastModifiedDateTime,from,toRecipients,ccRecipients,hasAttachments,conversationId';
+
+  const messages = [];
+  const folderErrors = [];
+
+  for (let i = 0; i < folders.length; i += 1) {
+    const folder = folders[i];
+    await sleep(FOLDER_WALK_DELAY_MS);
+    if ((i + 1) % 25 === 0) {
+      console.log(`[graph-client] fetchAllFolderMessagesSince: checked ${i + 1}/${folders.length} folders, ${messages.length} messages so far`);
+    }
+    let url = `${GRAPH_BASE}/users/${mailbox}/mailFolders/${folder.id}/messages?${select}&$filter=receivedDateTime ge ${sinceIso}&$top=999`;
+    let pageCount = 0;
+    try {
+      while (url && pageCount < MAX_FOLDER_MESSAGE_PAGES) {
+        const res = await fetchWithBackoff(url, token);
+        const data = await res.json();
+        for (const msg of data.value || []) {
+          messages.push({
+            folderId: folder.id,
+            folderPath: folder.fullPath,
+            subject: msg.subject || '',
+            sender: msg.from?.emailAddress
+              ? `${msg.from.emailAddress.name || ''} <${msg.from.emailAddress.address || ''}>`.trim()
+              : '',
+            recipients: [...(msg.toRecipients || []), ...(msg.ccRecipients || [])]
+              .map((r) => r.emailAddress?.address)
+              .filter(Boolean)
+              .join('; '),
+            receivedDateTime: msg.receivedDateTime,
+            lastModifiedDateTime: msg.lastModifiedDateTime || null,
+            hasAttachments: !!msg.hasAttachments,
+            conversationId: msg.conversationId || null,
+            internetMessageId: msg.internetMessageId || null,
+          });
+        }
+        url = data['@odata.nextLink'] || null;
+        pageCount += 1;
+      }
+      if (pageCount >= MAX_FOLDER_MESSAGE_PAGES && url) {
+        console.warn(`[graph-client] fetchAllFolderMessagesSince: hit MAX_FOLDER_MESSAGE_PAGES (${MAX_FOLDER_MESSAGE_PAGES}) for folder "${folder.fullPath}" with more pages still available.`);
+      }
+    } catch (err) {
+      folderErrors.push({ folderId: folder.id, folderPath: folder.fullPath, error: err.message });
+      console.error(`[graph-client] fetchAllFolderMessagesSince: folder "${folder.fullPath}" failed, skipping it:`, err.message);
+    }
+  }
+
+  return { messages, folderErrors, foldersChecked: folders.length };
 }
 
 function chunk(arr, size) {
@@ -531,6 +618,7 @@ module.exports = {
   fetchMessagesSince,
   fetchAllMailboxMessagesSince,
   fetchFolderTree,
+  fetchAllFolderMessagesSince,
   fetchMessageFlags,
   fetchReplyStatus,
   fetchConversationMessages,

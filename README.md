@@ -110,6 +110,7 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 | `POST /api/ingest/run` | Manually trigger one poll cycle (Inbox only) |
 | `GET /api/ingest/folder-map?mailbox=<address>` | CSV of every mail folder, walked by id — see "Folder tree enumeration" below |
 | `POST /api/ingest/backfill-all-folders?since=<date>` | One-off historical catch-up across every folder + full reassessment — see "Historical catch-up" below |
+| `GET /api/ingest/folder-messages?since=<date>&mailbox=<address>` | Read-only CSV audit export across every folder — see "Folder audit export" below |
 
 ## AI classification
 
@@ -508,6 +509,45 @@ times out on a proxy in front of it; watch the server logs for
 `backfillAllFoldersAndReassess` progress lines (logged every 25
 reclassifications) rather than assuming a timed-out request means it
 stopped, then re-check the dashboard once it's done.
+
+## Folder audit export (`/folder-messages`)
+
+`GET /api/ingest/folder-messages?since=<date>&mailbox=<address>` is a
+**read-only** counterpart to `/backfill-all-folders` — same idea (every
+message since a date, from every folder, not just Inbox), but it never
+touches this app's own database. It's a reporting export:
+`fetchAllFolderMessagesSince` in `graph/client.js` re-walks the folder tree
+fresh (`fetchFolderTree`), then queries each folder's `/messages` since
+that date, and the route returns the result as `messages_since_<date>.csv`
+— `folder_id`, `folder_path`, `subject`, `sender`, `recipients`,
+`receivedDateTime`, `lastModifiedDateTime`, `days_between_received_and_modified`,
+`hasAttachments`, `conversationId`, `internetMessageId`.
+
+**The "resolve time" caveat — read this before trusting the numbers.**
+Graph has no field that records when a message was actually filed into a
+folder. `lastModifiedDateTime` is the closest proxy — it updates on *any*
+change to the message (read status, a category tag, a flag, or a folder
+move), not exclusively on being archived. `days_between_received_and_modified`
+is `lastModifiedDateTime − receivedDateTime` in fractional days. Both are
+labeled `(estimate...)` directly in the CSV's own column headers, not just
+here — a large gap suggests a message likely sat before being actioned; a
+near-zero gap suggests it was actioned quickly, but neither is a confirmed
+"resolved on" date the way `resolved_at` in the dashboard's own database
+tries to be (see the "Avg. resolution time" section above) — that one is
+scoped to messages the dashboard has actually synced status for, this is a
+much rawer, less-processed view across the whole mailbox.
+
+**Resilient to one bad folder.** A single folder erroring (a permissions
+quirk on a system folder, repeated 429s past the retry budget) is recorded
+and skipped, not fatal to the run — see the response's `X-Folders-Errored`
+header and the server logs for which ones and why. `X-Folders-Checked`,
+`X-Messages-Found`, `X-Oldest-Received`, and `X-Newest-Received` are also
+set on the response, since the body itself is the CSV file.
+
+Same long-running caveat as `/backfill-all-folders` — ~380 folders,
+sequential, real network calls each — expect several minutes, and check
+server logs (`fetchAllFolderMessagesSince` logs progress every 25 folders)
+rather than assuming a timed-out response means it stopped.
 
 ## Access control (Basic Auth)
 

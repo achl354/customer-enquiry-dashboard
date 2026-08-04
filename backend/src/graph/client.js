@@ -21,6 +21,11 @@ const MAX_MESSAGES_PER_POLL = Number(process.env.MAX_MESSAGES_PER_POLL) || 500;
 // (an empty `value` page that still carries a non-null @odata.nextLink)
 // would otherwise loop forever, since neither exit condition is ever met.
 const MAX_PAGES = Math.ceil(MAX_MESSAGES_PER_POLL / PAGE_SIZE) + 10;
+// Separate, much higher cap for fetchAllMailboxMessagesSince below — that's
+// a deliberate one-off historical catch-up across the whole mailbox, not
+// the recurring per-minute Inbox poll MAX_MESSAGES_PER_POLL is tuned for.
+const MAX_BACKFILL_MESSAGES = Number(process.env.MAX_BACKFILL_MESSAGES) || 5000;
+const MAX_BACKFILL_PAGES = Math.ceil(MAX_BACKFILL_MESSAGES / PAGE_SIZE) + 10;
 
 function isConfigured() {
   return !!(process.env.TENANT_ID && process.env.CLIENT_ID && process.env.CLIENT_SECRET && process.env.MAILBOX);
@@ -112,6 +117,61 @@ function toRawEmail(msg) {
     categories: msg.categories || [],
     conversationId: msg.conversationId || null,
   };
+}
+
+/**
+ * Same idea as fetchMessagesSince, but mailbox-wide — /users/{mailbox}/messages
+ * (no /mailFolders/{x}/ path segment) searches every folder, not just
+ * Inbox. For catching up on historical mail that arrived, got resolved,
+ * and was archived into a folder before this app was ever ingesting
+ * anything — ordinary polling only ever looks at Inbox, so it would never
+ * find those on its own no matter how long it ran (see routes/ingest.js's
+ * /backfill-all-folders, which is what actually calls this).
+ *
+ * Not used for regular polling — staff's own new mail always lands in
+ * Inbox first, so fetchMessagesSince already catches everything going
+ * forward; this is strictly a one-time catch-up tool.
+ *
+ * Also captures parentFolderId and lastModifiedDateTime per message (unlike
+ * fetchMessagesSince) so ingestEmail can set the correct status/resolved_at
+ * immediately for mail that's already sitting outside Inbox, instead of
+ * waiting a full poll cycle for syncFlagStatuses to notice it.
+ */
+async function fetchAllMailboxMessagesSince(sinceIso) {
+  const token = await getAccessToken();
+  const mailbox = encodeURIComponent(process.env.MAILBOX);
+  const inboxFolderId = await getInboxFolderId();
+  const select =
+    '$select=id,internetMessageId,subject,bodyPreview,receivedDateTime,from,toRecipients,hasAttachments,importance,webLink,flag,conversationId,categories,parentFolderId,lastModifiedDateTime';
+  let url = `${GRAPH_BASE}/users/${mailbox}/messages?${select}&$filter=receivedDateTime ge ${sinceIso}&$orderby=receivedDateTime desc&$top=${PAGE_SIZE}`;
+
+  const messages = [];
+  let pageCount = 0;
+  while (url && messages.length < MAX_BACKFILL_MESSAGES && pageCount < MAX_BACKFILL_PAGES) {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Graph API error ${res.status}: ${body}`);
+    }
+    const data = await res.json();
+    messages.push(...(data.value || []));
+    url = data['@odata.nextLink'] || null;
+    pageCount += 1;
+  }
+
+  if ((pageCount >= MAX_BACKFILL_PAGES || messages.length >= MAX_BACKFILL_MESSAGES) && url) {
+    console.warn(
+      `[graph-client] fetchAllMailboxMessagesSince hit its cap (${MAX_BACKFILL_MESSAGES} messages) with more ` +
+      `pages still available — the oldest messages in this window were left out. Re-run with a narrower ` +
+      `"since" date, or raise MAX_BACKFILL_MESSAGES, to pick up the rest.`
+    );
+  }
+
+  return messages.slice(0, MAX_BACKFILL_MESSAGES).map((msg) => ({
+    ...toRawEmail(msg),
+    movedOutOfInbox: msg.parentFolderId !== inboxFolderId,
+    lastModifiedDateTime: msg.lastModifiedDateTime || null,
+  }));
 }
 
 function chunk(arr, size) {
@@ -366,6 +426,7 @@ async function fetchFullBody(graphMessageId) {
 module.exports = {
   isConfigured,
   fetchMessagesSince,
+  fetchAllMailboxMessagesSince,
   fetchMessageFlags,
   fetchReplyStatus,
   fetchConversationMessages,

@@ -176,6 +176,60 @@ function runPollOnce() {
   return pollInFlight;
 }
 
+let backfillInFlight = null;
+
+/**
+ * One-time historical catch-up, NOT part of regular polling — pulls mail
+ * from every folder (not just Inbox — see fetchAllMailboxMessagesSince)
+ * received since `sinceIso`, ingests anything not already in the database,
+ * then reassesses (reclassifies) every enquiry received since that date
+ * regardless of its current category or classifiedBy, including ones
+ * staff already manually corrected. See routes/ingest.js's
+ * /backfill-all-folders, the only thing that calls this.
+ *
+ * Deliberately not automatic: unlike the per-minute poll, every
+ * reclassification is a real classification call (AI cost when
+ * configured), and re-running it against mail already correctly
+ * categorized has no benefit — this should only run when someone actually
+ * has a reason to (see the readme section on this).
+ */
+async function backfillAllFoldersAndReassess(sinceIso) {
+  if (backfillInFlight) return backfillInFlight;
+
+  backfillInFlight = (async () => {
+    const messages = await graphClient.fetchAllMailboxMessagesSince(sinceIso);
+
+    let ingested = 0;
+    for (const raw of messages) {
+      const id = await repo.ingestEmail(raw);
+      if (id) ingested += 1;
+    }
+    console.log(`[graph-poller] backfillAllFoldersAndReassess: ingested ${ingested}/${messages.length} new (rest already existed)`);
+
+    const candidates = repo.listEnquiriesReceivedSince(sinceIso);
+    let reclassified = 0;
+    let failed = 0;
+    for (const row of candidates) {
+      try {
+        await repo.reclassifyEnquiry(row);
+        reclassified += 1;
+      } catch (err) {
+        failed += 1;
+        console.error(`[graph-poller] backfillAllFoldersAndReassess: reclassify failed for ${row.id}:`, err.message);
+      }
+      if (reclassified % 25 === 0) {
+        console.log(`[graph-poller] backfillAllFoldersAndReassess: reclassified ${reclassified}/${candidates.length}`);
+      }
+    }
+
+    return { fetched: messages.length, ingested, reassessed: candidates.length, reclassified, failed };
+  })().finally(() => {
+    backfillInFlight = null;
+  });
+
+  return backfillInFlight;
+}
+
 /**
  * Start a scheduled poll (default every minute — override with
  * POLL_CRON_EXPRESSION, e.g. '*\/5 * * * *' for every 5 minutes, if
@@ -203,4 +257,11 @@ function startScheduledPolling(cronExpression = process.env.POLL_CRON_EXPRESSION
   return task;
 }
 
-module.exports = { isGraphConfigured, runPollOnce, syncFlagStatuses, syncReplyStatuses, startScheduledPolling };
+module.exports = {
+  isGraphConfigured,
+  runPollOnce,
+  syncFlagStatuses,
+  syncReplyStatuses,
+  backfillAllFoldersAndReassess,
+  startScheduledPolling,
+};

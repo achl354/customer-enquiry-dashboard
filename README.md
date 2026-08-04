@@ -102,11 +102,13 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 |---|---|
 | `GET /api/enquiries?category=&priority=&status=&search=&sort=&order=` | List/filter enquiries. `search` matches subject, body, sender email, PO#, facility, and assignee |
 | `GET /api/enquiries/:id` | Single enquiry, full detail |
-| `PATCH /api/enquiries/:id` | Update `assignedTo` (dashboard-only; `status` is read-only — rejected with 400 if sent, since it's derived from Outlook, see "Status sync" below) |
+| `PATCH /api/enquiries/:id/category` | Manual recategorization (`status` has no direct-set endpoint at all — it's derived from Outlook, see "Status sync" below, with `DELETE` as the one dashboard-native exception) |
+| `DELETE /api/enquiries/:id` | Detail page's "Delete" — sets `DISMISSED`, doesn't touch the real mailbox |
 | `GET /api/enquiries/export` | CSV export — same filters as the list endpoint, no pagination. Lean reporting column set (no draft/body content) |
 | `GET /api/stats/overview` | Counts by category/status/priority/facility, aging buckets, open workload by assignee, 30-day daily volume, avg resolution time (gated behind a minimum sample size) |
 | `GET /api/ingest/status` | Whether live Graph polling and AI classification are configured |
-| `POST /api/ingest/run` | Manually trigger one poll cycle |
+| `POST /api/ingest/run` | Manually trigger one poll cycle (Inbox only) |
+| `POST /api/ingest/backfill-all-folders?since=<date>` | One-off historical catch-up across every folder + full reassessment — see "Historical catch-up" below |
 
 ## AI classification
 
@@ -427,6 +429,55 @@ actually have a `resolved_at`, so the Overview tile explicitly
 distinguishes "no resolved enquiries yet" from "N resolved, but timing
 data isn't available yet" (the latter is normal right after deploying this
 — it clears up as the backfill runs).
+
+## Historical catch-up: pulling all folders + reassessing (`/backfill-all-folders`)
+
+Regular polling (`fetchMessagesSince`) only ever looks at the **Inbox** —
+that's the correct signal for "a new enquiry arrived," since staff's own
+new mail always lands there first. But it means any mail that arrived,
+got resolved, and was archived into a folder *before this app was ever
+ingesting anything* is invisible to normal polling no matter how long it
+runs — it's sitting in a folder it never looks at.
+
+`POST /api/ingest/backfill-all-folders?since=<date>` (`backfillAllFoldersAndReassess`
+in `graph/poller.js`) is the one-off catch-up for that. It:
+
+1. Calls `fetchAllMailboxMessagesSince` — `/users/{mailbox}/messages` with
+   no folder path segment, which searches every folder, not just Inbox —
+   and ingests anything not already in the database (idempotent on
+   `graph_message_id`, same as regular polling; already-ingested mail is
+   skipped here, not re-inserted). Messages already sitting outside Inbox
+   get their status/`resolved_at` set immediately at ingestion (via
+   `parentFolderId`/`lastModifiedDateTime`, also fetched by this call),
+   rather than waiting a full extra cycle for the regular sync to notice.
+2. Re-runs classification (`reclassifyEnquiry`) on **every** enquiry
+   received on/after `since` — including ones already ingested before this
+   ran, and including ones staff already manually recategorized. This is
+   deliberately more aggressive than routine polling, which never
+   reclassifies anything already in the database.
+
+**Real cost, deliberately not automatic.** Every reclassification is a
+real classification call (an Anthropic API call, if configured) — this is
+not free, and not something to run routinely. `since` has no default
+specifically so this can never fire against the mailbox's entire history
+by accident. Only trigger it when there's an actual reason to (a known
+ingestion gap, a suspected batch of miscategorized mail).
+
+**What it deliberately doesn't touch:** `draft_reply` is left alone
+entirely — a bulk reassessment shouldn't destroy a draft staff may have
+already reviewed or copied out. `status` only changes via the same
+confirmed-spam rule the manual category-PATCH endpoint uses (recategorized
+to spam → `IGNORED`, unless already `DISMISSED`) — everything else about
+an enquiry's workflow state (`RESOLVED`, `IN_PROGRESS`,
+`WAITING_ON_CUSTOMER`, etc.) is the Outlook-sync's job, not this one's.
+
+**Can take a while.** Every step is a real, sequential network call — for
+a wide window or a busy mailbox this can run for many minutes. The work
+keeps running server-side to completion even if the HTTP response itself
+times out on a proxy in front of it; watch the server logs for
+`backfillAllFoldersAndReassess` progress lines (logged every 25
+reclassifications) rather than assuming a timed-out request means it
+stopped, then re-check the dashboard once it's done.
 
 ## Access control (Basic Auth)
 

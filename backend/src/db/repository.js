@@ -139,13 +139,13 @@ const insertStmt = db.prepare(`
     recipients, subject, body_preview, has_attachments, importance, web_link,
     category, priority, po_number, quote_number, facility, sender_domain, city_tag,
     conversation_id, suggested_action, draft_reply, confidence, classified_by,
-    status, created_at, updated_at
+    status, resolved_at, created_at, updated_at
   ) VALUES (
     @id, @graphMessageId, @internetMessageId, @receivedAt, @senderName, @senderEmail,
     @recipients, @subject, @bodyPreview, @hasAttachments, @importance, @webLink,
     @category, @priority, @poNumber, @quoteNumber, @facility, @senderDomain, @cityTag,
     @conversationId, @suggestedAction, @draftReply, @confidence, @classifiedBy,
-    @status, @createdAt, @updatedAt
+    @status, @resolvedAt, @createdAt, @updatedAt
   )
   ON CONFLICT(graph_message_id) DO NOTHING
 `);
@@ -168,6 +168,20 @@ async function ingestEmail(raw) {
 
   const result = await classifyEmail(raw);
   const timestamp = nowIso();
+
+  // movedOutOfInbox/lastModifiedDateTime are only present when raw came
+  // from fetchAllMailboxMessagesSince (the all-folder historical backfill,
+  // see graph/poller.js) — undefined for the normal Inbox-only poll, where
+  // statusForFolderMove(undefined) is just another no-signal null, same as
+  // before this existed. Setting resolved_at here for already-archived
+  // historical mail avoids waiting a full extra poll cycle for
+  // syncFlagStatuses to notice it, or for backfillResolvedAt to recover it.
+  const initialStatus =
+    statusForCategories(raw.categories) ||
+    statusForFolderMove(raw.movedOutOfInbox) ||
+    statusForFlag(raw.flagStatus) ||
+    statusForConfirmedSpam(result.category, result.classifiedBy, result.confidence) ||
+    'NEW';
 
   const info = insertStmt.run({
     id,
@@ -194,11 +208,8 @@ async function ingestEmail(raw) {
     draftReply: result.draftReply || null,
     confidence: result.confidence == null ? null : result.confidence,
     classifiedBy: result.classifiedBy || 'rules',
-    status:
-      statusForCategories(raw.categories) ||
-      statusForFlag(raw.flagStatus) ||
-      statusForConfirmedSpam(result.category, result.classifiedBy, result.confidence) ||
-      'NEW',
+    status: initialStatus,
+    resolvedAt: initialStatus === 'RESOLVED' && raw.lastModifiedDateTime ? raw.lastModifiedDateTime : null,
     createdAt: timestamp,
     updatedAt: timestamp,
   });
@@ -318,6 +329,15 @@ const UPDATE_COLUMNS = {
   classifiedBy: 'classified_by',
   confidence: 'confidence',
   resolvedAt: 'resolved_at',
+  // Added for reclassifyEnquiry below — a bulk re-categorization needs to
+  // update everything classifyEmail() produces, not just category itself.
+  priority: 'priority',
+  poNumber: 'po_number',
+  quoteNumber: 'quote_number',
+  facility: 'facility',
+  senderDomain: 'sender_domain',
+  cityTag: 'city_tag',
+  suggestedAction: 'suggested_action',
 };
 
 function updateEnquiry(id, updates) {
@@ -381,6 +401,68 @@ function listResolvedEnquiriesMissingResolvedAt() {
     )
     .all()
     .map((r) => ({ id: r.id, graphMessageId: r.graph_message_id }));
+}
+
+// For the /backfill-all-folders reassess pass (see graph/poller.js) — every
+// enquiry received on/after a given date, regardless of current category or
+// classifiedBy. Returns full rows (not a projection) since reclassifyEnquiry
+// needs everything classifyEmail() looks at.
+function listEnquiriesReceivedSince(sinceIso) {
+  return db.prepare('SELECT * FROM enquiries WHERE received_at >= ?').all(sinceIso);
+}
+
+// Reconstructs the flat "raw email" shape classifyEmail()/classify() expect
+// (see triage/classify.js's jsdoc) directly from an already-stored row —
+// reclassification never needs a fresh Graph call, since everything the
+// classifier looks at was already captured at ingestion time.
+function rawShapeForReclassify(row) {
+  return {
+    graphMessageId: row.graph_message_id,
+    receivedAt: row.received_at,
+    senderName: row.sender_name,
+    senderEmail: row.sender_email,
+    recipients: JSON.parse(row.recipients || '[]'),
+    subject: row.subject,
+    bodyPreview: row.body_preview,
+    hasAttachments: !!row.has_attachments,
+    importance: row.importance,
+    conversationId: row.conversation_id,
+  };
+}
+
+// Re-runs classification against an already-ingested enquiry and overwrites
+// its categorization — used by the /backfill-all-folders reassess pass.
+// Deliberately narrow about what it touches:
+//   - draft_reply is left alone entirely. A bulk reassessment shouldn't
+//     destroy a draft staff may have already reviewed or copied out.
+//   - status only changes via the same confirmed-spam rule the manual
+//     category-PATCH endpoint uses (recategorized to spam -> IGNORED,
+//     unless already DISMISSED). Everything else about an enquiry's
+//     workflow state (RESOLVED, IN_PROGRESS, WAITING_ON_CUSTOMER, etc.) is
+//     the Outlook-sync's job, not this one's — reassessing what category
+//     something belongs to shouldn't reset progress already made on it.
+async function reclassifyEnquiry(row) {
+  const raw = rawShapeForReclassify(row);
+  const result = await classifyEmail(raw);
+
+  const patch = {
+    category: result.category,
+    priority: result.priority,
+    poNumber: result.extractedFields.poNumber,
+    quoteNumber: result.extractedFields.quoteNumber,
+    facility: result.extractedFields.facility,
+    senderDomain: result.extractedFields.senderDomain,
+    cityTag: result.extractedFields.cityTag || null,
+    suggestedAction: result.suggestedAction,
+    confidence: result.confidence == null ? null : result.confidence,
+    classifiedBy: result.classifiedBy || 'rules',
+  };
+
+  if (statusForConfirmedSpam(result.category, patch.classifiedBy, patch.confidence) === 'IGNORED' && row.status !== 'DISMISSED') {
+    patch.status = 'IGNORED';
+  }
+
+  return updateEnquiry(row.id, patch);
 }
 
 // overviewStats() runs on every dashboard load/poll of /api/stats/overview,
@@ -588,6 +670,8 @@ module.exports = {
   listOpenEnquiriesForFlagSync,
   listOpenEnquiriesForReplySync,
   listResolvedEnquiriesMissingResolvedAt,
+  listEnquiriesReceivedSince,
+  reclassifyEnquiry,
   statusForFlag,
   statusForCategories,
   statusForReply,

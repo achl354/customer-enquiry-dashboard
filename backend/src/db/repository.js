@@ -475,9 +475,23 @@ const last7DaysStmt = db.prepare("SELECT COUNT(*) as c FROM enquiries WHERE rece
 const prev7DaysStmt = db.prepare(
   "SELECT COUNT(*) as c FROM enquiries WHERE received_at >= datetime('now', '-14 days') AND received_at < datetime('now', '-7 days')"
 );
-const byCategoryStmt = db.prepare('SELECT category, COUNT(*) as count FROM enquiries GROUP BY category');
-const byStatusStmt = db.prepare('SELECT status, COUNT(*) as count FROM enquiries GROUP BY status');
-const byPriorityStmt = db.prepare('SELECT priority, COUNT(*) as count FROM enquiries GROUP BY priority');
+// "Total enquiries" deliberately doesn't count from the very first row —
+// everything before this date is seed/backfill data from before the
+// mailbox was tracked for real, not a genuine enquiry volume figure.
+// Change this one constant to move the reporting start date. Declared here
+// (ahead of byCategoryStmt etc. below) since they're scoped to it too.
+const TOTAL_SINCE = '2026-07-01T00:00:00.000Z';
+// Scoped to TOTAL_SINCE, same as "Total enquiries" — these three used to
+// query all-time, which silently mixed in pre-tracking seed/backfill data
+// and meant their bars could never sum to the total shown next to them
+// (same bug as byFacilityStmt, fixed the same way here).
+const byCategoryStmt = db.prepare(`SELECT category, COUNT(*) as count FROM enquiries WHERE received_at >= '${TOTAL_SINCE}' GROUP BY category`);
+const byStatusStmt = db.prepare(`SELECT status, COUNT(*) as count FROM enquiries WHERE received_at >= '${TOTAL_SINCE}' GROUP BY status`);
+const byPriorityStmt = db.prepare(`SELECT priority, COUNT(*) as count FROM enquiries WHERE received_at >= '${TOTAL_SINCE}' GROUP BY priority`);
+// Open/urgent/aging deliberately stay all-time, unlike the three above —
+// backlog from before TOTAL_SINCE is still real backlog worth surfacing,
+// not a historical volume figure to exclude. Different question, different
+// scope, on purpose.
 const openCountStmt = db.prepare(`SELECT COUNT(*) as c FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL})`);
 const oldestOpenStmt = db.prepare(
   `SELECT * FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) ORDER BY received_at ASC LIMIT 1`
@@ -485,11 +499,13 @@ const oldestOpenStmt = db.prepare(
 const urgentOpenStmt = db.prepare(
   `SELECT COUNT(*) as c FROM enquiries WHERE priority = 'URGENT' AND status NOT IN (${CLOSED_STATUS_SQL})`
 );
-// "Total enquiries" deliberately doesn't count from the very first row —
-// everything before this date is seed/backfill data from before the
-// mailbox was tracked for real, not a genuine enquiry volume figure.
-// Change this one constant to move the reporting start date.
-const TOTAL_SINCE = '2026-07-01T00:00:00.000Z';
+// All-time count of status='RESOLVED' regardless of received_at — used
+// only to detect "are there any resolved enquiries at all" for the Overview
+// resolution-time hint, which pairs with resolutionStatsStmt below (also
+// all-time by design). byStatus.RESOLVED can't be reused for this now that
+// it's scoped to TOTAL_SINCE — it would wrongly say "no resolved enquiries
+// yet" if every resolved one happened to predate TOTAL_SINCE.
+const totalResolvedAllTimeStmt = db.prepare("SELECT COUNT(*) as c FROM enquiries WHERE status = 'RESOLVED'");
 const totalStmt = db.prepare(`SELECT COUNT(*) as c FROM enquiries WHERE received_at >= '${TOTAL_SINCE}'`);
 const lowConfidenceCountStmt = db.prepare(
   `SELECT COUNT(*) as c FROM enquiries WHERE classified_by = 'ai' AND confidence < ${LOW_CONFIDENCE_THRESHOLD}`
@@ -614,6 +630,7 @@ function overviewStats() {
   const oldestOpen = oldestOpenStmt.get();
   const urgentOpen = urgentOpenStmt.get().c;
   const total = totalStmt.get().c;
+  const totalResolvedAllTime = totalResolvedAllTimeStmt.get().c;
   const lowConfidenceCount = lowConfidenceCountStmt.get().c;
 
   const resolutionStats = resolutionStatsStmt.get();
@@ -677,6 +694,7 @@ function overviewStats() {
     oldestOpen: rowToEnquiry(oldestOpen),
     avgResolutionHours,
     resolvedCount: resolutionStats.count,
+    totalResolvedAllTime,
     lowConfidenceCount,
     last7Days,
     prev7Days,

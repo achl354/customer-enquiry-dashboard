@@ -132,10 +132,15 @@ export default function Overview() {
   const hasEnoughResolved = stats.resolvedCount >= MIN_RESOLVED_SAMPLE;
   // resolvedCount only counts RESOLVED enquiries with a known resolved_at
   // (see resolutionStatsStmt in db/repository.js) — distinct from the true
-  // total in byStatus.RESOLVED, since a resolution detected before the
-  // resolved_at column existed, or one whose source message is confirmed
-  // gone, has no timing data to average even though it's genuinely resolved.
-  const totalResolved = stats.byStatus.RESOLVED || 0;
+  // all-time total, since a resolution detected before the resolved_at
+  // column existed, or one whose source message is confirmed gone, has no
+  // timing data to average even though it's genuinely resolved. Uses
+  // totalResolvedAllTime rather than byStatus.RESOLVED — byStatus is now
+  // scoped to the same since-1-July window as "Total enquiries" (see
+  // byStatusStmt in db/repository.js), which would wrongly read as "no
+  // resolved enquiries yet" if every resolved one predated that window,
+  // even though avgResolutionHours below is itself all-time.
+  const totalResolved = stats.totalResolvedAllTime || 0;
   const resolutionTimeHint =
     totalResolved === 0
       ? 'No resolved enquiries yet'
@@ -266,12 +271,12 @@ export default function Overview() {
 
       <div className="chart-grid">
         <div className="panel">
-          <h3>Enquiries by category</h3>
+          <h3>Enquiries by category{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
           <BarList data={categoryData} linkTo={(key) => `/queue?category=${encodeURIComponent(key)}`} />
         </div>
 
         <div className="panel">
-          <h3>Enquiries by status</h3>
+          <h3>Enquiries by status{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
           <BarList
             data={statusData}
             colorFor={(key) => STATUS_COLORS[key]}

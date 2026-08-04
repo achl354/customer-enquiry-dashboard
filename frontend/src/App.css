@@ -367,21 +367,71 @@
   }
 }
 
-/* Secondary stat row — Avg. resolution time and Low-confidence. Same
-   width as the primary row but deliberately quieter (see .stat-tile-quiet
-   below) so it reads as "also worth knowing," not a second bank of
-   equally-weighted headline tiles. */
-.stat-grid-secondary {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: clamp(6px, 0.8vh, 10px);
-  margin-bottom: clamp(8px, 1.2vh, 18px);
-  max-width: 1600px;
+/* Global reporting-period control — drives resolution-time, first-response,
+   backlog, and status-mix together (see globalGranularity in Overview.jsx),
+   replacing what used to be four independent per-panel toggles. */
+.overview-global-filter {
+  margin-bottom: clamp(8px, 1.2vh, 16px);
+  flex-wrap: wrap;
+  gap: 8px 16px;
 }
 
-@media (max-width: 560px) {
-  .stat-grid-secondary {
-    grid-template-columns: 1fr;
+/* Action queue — the 5 longest-waiting open enquiries. A row-per-enquiry
+   list, not BarList (there's no single magnitude value here, just several
+   distinct fields per row), so its own minimal markup rather than forcing
+   an existing chart component into a shape it wasn't built for. */
+.action-queue {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.action-queue-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--gridline);
+  font-size: 13px;
+}
+
+.action-queue-row:last-child {
+  border-bottom: none;
+}
+
+.action-queue-age {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  min-width: 32px;
+  flex-shrink: 0;
+}
+
+.action-queue-subject {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.action-queue-sender {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 700px) {
+  .action-queue-row {
+    flex-wrap: wrap;
+  }
+  .action-queue-sender {
+    max-width: 100%;
   }
 }
 
@@ -804,6 +854,24 @@
   cursor: crosshair;
 }
 
+.trend-chart-ytick {
+  font-size: 9.5px;
+  fill: var(--text-muted);
+}
+
+.net-diff-chart {
+  margin-top: 10px;
+}
+
+.net-diff-chart svg {
+  height: 44px;
+  cursor: pointer;
+}
+
+.net-diff-chart rect {
+  transition: opacity 0.15s ease;
+}
+
 .trend-chart-axis {
   display: flex;
   justify-content: space-between;
@@ -859,54 +927,12 @@
   flex-shrink: 0;
 }
 
-/* Donut chart (status mix) */
-.donut-chart {
-  display: flex;
-  align-items: center;
-  gap: 24px;
-  flex-wrap: wrap;
-}
-
-.donut-chart-body {
-  position: relative;
-  flex-shrink: 0;
-  width: clamp(120px, 16vw, 180px);
-}
-
-.donut-chart-svg {
-  width: 100%;
-  display: block;
-}
-
-.donut-segment {
-  cursor: pointer;
-  outline: none;
-  transition: opacity 0.15s ease;
-}
-
-/* Dims every segment but the hovered one, same "lift the hovered mark"
-   idea as bar/line hover elsewhere — cheaper than an actual lift for an
-   arc, and reads just as clearly against neighboring segments. */
-.donut-chart:has(.donut-segment-hovered) .donut-segment:not(.donut-segment-hovered) {
-  opacity: 0.35;
-}
-
-.donut-center-value {
-  font-size: 28px;
-  font-weight: 600;
-  fill: var(--text-primary);
-}
-
-.donut-center-label {
-  font-size: 11px;
-  fill: var(--text-muted);
-}
-
-.donut-chart-tooltip {
-  transform: translate(-50%, calc(-100% - 10px));
-}
-
-.donut-legend {
+/* Shared "always-visible legend row" for part-to-whole charts — swatch +
+   label + value/share, optionally a whole-row link. Was donut-specific
+   until the status donut was replaced by StackedBar below; generalized
+   at that point since the pattern (and its markup) is identical either
+   way, just fed by a different chart above it. */
+.chart-legend {
   list-style: none;
   margin: 0;
   padding: 0;
@@ -917,23 +943,19 @@
   min-width: 0;
 }
 
-.donut-legend-item {
+.chart-legend-item {
   gap: 8px;
   transition: opacity 0.15s ease;
 }
 
-.donut-chart:has(.donut-segment-hovered) .donut-legend-item:not(.donut-legend-item-hovered) {
-  opacity: 0.5;
-}
-
-.donut-legend-label {
+.chart-legend-label {
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.donut-legend-value {
+.chart-legend-value {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
   margin-left: auto;
@@ -945,15 +967,50 @@
    (the <li>'s own flex layout does the work) while its rendered children
    still form its click target — same effect as BarList's whole-row Link,
    without needing to restructure the legend row's markup around it. */
-.donut-legend-item-link a {
+.chart-legend-item-link a {
   display: contents;
   color: inherit;
   text-decoration: none;
   cursor: pointer;
 }
 
-.donut-legend-item-link:hover .donut-legend-label {
+.chart-legend-item-link:hover .chart-legend-label {
   color: var(--text-primary);
+}
+
+/* Stacked bar (status mix) — replaced the status donut: per the dataviz
+   reference this project follows, a stacked bar is the actual default for
+   part-to-whole, donut a deprioritized carve-out for a handful of
+   segments. Single track, one flex gap doubling as the 2px "surface gap"
+   spec between segments, rounded only at the whole track's ends. */
+.stacked-bar-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.stacked-bar-track {
+  display: flex;
+  gap: 2px;
+  height: 22px;
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--gridline);
+}
+
+.stacked-bar-segment {
+  cursor: pointer;
+  outline: none;
+  transition: opacity 0.15s ease;
+  min-width: 2px;
+}
+
+.stacked-bar-chart:has(.stacked-bar-segment-hovered) .stacked-bar-segment:not(.stacked-bar-segment-hovered) {
+  opacity: 0.5;
+}
+
+.stacked-bar-chart:has(.stacked-bar-segment-hovered) .chart-legend-item:not(.chart-legend-item-hovered) {
+  opacity: 0.5;
 }
 
 /* Filter bar */

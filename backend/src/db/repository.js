@@ -509,8 +509,13 @@ const byPriorityStmt = db.prepare(`SELECT priority, COUNT(*) as count FROM enqui
 // not a historical volume figure to exclude. Different question, different
 // scope, on purpose.
 const openCountStmt = db.prepare(`SELECT COUNT(*) as c FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL})`);
-const oldestOpenStmt = db.prepare(
-  `SELECT * FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) ORDER BY received_at ASC LIMIT 1`
+// Action queue on Overview — the 5 longest-waiting still-open enquiries,
+// not just the single oldest. "Owner" isn't part of this: assigned_to is
+// an unused schema column today (nothing reads or writes it), so there's
+// no real assignment data to show yet.
+const OLDEST_OPEN_QUEUE_SIZE = 5;
+const oldestOpenQueueStmt = db.prepare(
+  `SELECT * FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) ORDER BY received_at ASC LIMIT ${OLDEST_OPEN_QUEUE_SIZE}`
 );
 const urgentOpenStmt = db.prepare(
   `SELECT COUNT(*) as c FROM enquiries WHERE priority = 'URGENT' AND status NOT IN (${CLOSED_STATUS_SQL})`
@@ -701,29 +706,33 @@ function backlogTrend(granularity) {
   }));
 }
 
-// Start of the current (possibly still in-progress) day/month/fiscal-quarter
-// — reuses enumeratePeriodEnds' own period-stepping for month/quarter (its
-// last entry, by construction, is whichever period `now` currently falls
-// in) rather than duplicating that fiscal-boundary math a third time. Day
-// isn't one of enumeratePeriodEnds' granularities (it steps in months), so
-// that case is handled directly here instead.
+// Start of the current (possibly still in-progress) day/month/fiscal-
+// quarter/fiscal-year — reuses enumeratePeriodEnds' own period-stepping
+// for month/quarter/year (its last entry, by construction, is whichever
+// period `now` currently falls in) rather than duplicating that
+// fiscal-boundary math a third time. Day isn't one of enumeratePeriodEnds'
+// granularities (it steps in months), so that case is handled directly
+// here instead — kept even though nothing routes to it anymore (see
+// statusByPeriod below), since it costs nothing to leave available.
 function currentPeriodStart(granularity) {
   if (granularity === 'day') {
     const now = new Date();
     return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())).toISOString();
   }
-  if (granularity === 'month' || granularity === 'quarter') {
+  if (granularity === 'month' || granularity === 'quarter' || granularity === 'year') {
     const ends = enumeratePeriodEnds(granularity);
     return ends[ends.length - 1].periodStart.toISOString();
   }
-  throw new Error(`Invalid granularity: ${granularity}. Use day, month, or quarter.`);
+  throw new Error(`Invalid granularity: ${granularity}. Use day, month, quarter, or year.`);
 }
 
-// Status mix of enquiries *received* in the current day/month/fiscal-
-// quarter — narrower than the by-status breakdown overviewStats() already
-// returns (that one is since TOTAL_SINCE, all of it). Powers the Overview
-// status donut's granularity toggle: "what's the status mix of what came
-// in today/this month/this quarter" rather than "since tracking began."
+// Status mix of enquiries *received* in the current month/fiscal-quarter/
+// fiscal-year — narrower than the by-status breakdown overviewStats()
+// already returns (that one is since TOTAL_SINCE, all of it). Powers the
+// Overview status panel's granularity — now the same shared global
+// month/quarter/year control the other period-toggle panels use, rather
+// than its own separate day/month/quarter toggle (see Overview.jsx) —
+// "today" was dropped in that consolidation.
 function statusByPeriod(granularity) {
   const sinceIso = currentPeriodStart(granularity);
   const rows = db.prepare('SELECT status, COUNT(*) as count FROM enquiries WHERE received_at >= ? GROUP BY status').all(sinceIso);
@@ -865,7 +874,7 @@ function overviewStats() {
   const byPriority = byPriorityStmt.all();
 
   const openCount = openCountStmt.get().c;
-  const oldestOpen = oldestOpenStmt.get();
+  const oldestOpenQueue = oldestOpenQueueStmt.all();
   const urgentOpen = urgentOpenStmt.get().c;
   const total = totalStmt.get().c;
   const totalResolvedAllTime = totalResolvedAllTimeStmt.get().c;
@@ -908,7 +917,7 @@ function overviewStats() {
     byPriority: Object.fromEntries(byPriority.map((r) => [r.priority, r.count])),
     byFacility: byFacility.map((r) => ({ facility: r.facility, count: r.count })),
     agingBuckets,
-    oldestOpen: rowToEnquiry(oldestOpen),
+    oldestOpenQueue: oldestOpenQueue.map(rowToEnquiry),
     avgResolutionHours,
     resolvedCount: resolutionStats.count,
     totalResolvedAllTime,

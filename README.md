@@ -111,7 +111,7 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 | `GET /api/stats/first-response-trend?granularity=month\|quarter\|year` | Avg. time to first reply by period, all-time, forward-looking only (see "First response time") |
 | `GET /api/stats/resolution-by-priority` | Avg. resolution time per priority tier, all-time snapshot (no granularity) |
 | `GET /api/stats/backlog-trend?granularity=month\|quarter\|year` | Open-enquiry count at the end of each period — an approximation, see "Backlog trend" below |
-| `GET /api/stats/status-by-period?granularity=day\|month\|quarter` | Status mix of enquiries *received* in the current day/month/fiscal-quarter — see "Status mix donut" below |
+| `GET /api/stats/status-by-period?granularity=month\|quarter\|year` | Status mix of enquiries *received* in the current month/fiscal-quarter/fiscal-year — see "Status mix" in "KPI trend panels" below |
 | `GET /api/ingest/status` | Whether live Graph polling and AI classification are configured |
 | `POST /api/ingest/run` | Manually trigger one poll cycle (Inbox only) |
 | `GET /api/ingest/folder-map?mailbox=<address>` | CSV of every mail folder, walked by id — see "Folder tree enumeration" below |
@@ -441,40 +441,69 @@ trend/by-priority panels below) only average rows that actually have a
 after deploying this, until the backfill catches up) simply isn't counted
 in the average rather than guessed at.
 
-## KPI trend panels (`/stats/volume-trend`, `/stats/resolution-trend`, `/stats/first-response-trend`, `/stats/resolution-by-priority`, `/stats/backlog-trend`)
+## KPI trend panels (`/stats/volume-trend`, `/stats/resolution-trend`, `/stats/first-response-trend`, `/stats/resolution-by-priority`, `/stats/backlog-trend`, `/stats/status-by-period`)
 
-Five reporting panels on Overview, each backed by its own endpoint rather
+Six reporting panels on Overview, each backed by its own endpoint rather
 than bundled into `/stats/overview` — they're switched by a granularity
-toggle the operator controls, not something every page load needs.
+control the operator drives, not something every page load needs.
+
+**One global reporting-period control** (Month/Quarter/Year) drives four of
+them together — resolution-time, first-response, backlog, and status-mix
+— rather than each carrying its own independent toggle, which is what this
+used to do. Consolidated per the dataviz reference this project follows
+("filters scope everything below them — every chart, stat, and table
+re-renders against the same slice"); four separate toggles for what's
+conceptually one question ("which period am I looking at") was clutter,
+not flexibility. Volume is the one deliberate exception, kept as its own
+local control below — it genuinely needs day/week granularity none of the
+other four expose.
+
 `period` strings follow the same convention everywhere: `"YYYY-MM"` for
 month (calendar), `"YYYY-FQn"` for quarter, `"YYYY"` for year — the latter
 two are **fiscal** (the AU financial year, 1 Jul – 30 Jun), not calendar.
 `YYYY` is the calendar year the fiscal year *starts* in (e.g. `"2026"` = FY
 1 Jul 2026 – 30 Jun 2027, shown in the UI as "FY26–27"). FQ1 = Jul-Sep, FQ2
 = Oct-Dec, FQ3 = Jan-Mar, FQ4 = Apr-Jun. Day/week (volume only) use plain
-calendar dates instead, same as before.
+calendar dates instead.
 
 **Enquiry volume** (`/stats/volume-trend?granularity=day|week|month|quarter`,
-no year) — received vs. resolved counts, replacing what used to be two
-separate fixed-granularity charts (a daily one and a cumulative weekly
-one) with a single Day/Week/Month/Quarter toggle. Deliberately
-non-cumulative at every granularity now (the old weekly chart accumulated;
-this doesn't) so switching granularity only changes the bucket size, not
-what kind of thing is being shown. Zero-filled from `TOTAL_SINCE` through
-now — scoped to that date the same way the by-category/status/priority/
-facility breakdowns are, since this is a volume figure.
+no year, its own local toggle) — received vs. resolved counts. Zero-filled
+from `TOTAL_SINCE` through now — scoped to that date the same way the
+by-category/status/priority/facility breakdowns are, since this is a
+volume figure. Two additions on top of the raw received/resolved lines:
+- **Y-axis value labels** — three reference gridlines (0/half/max) with
+  their numeric value, rather than an axis-less line (the hovered point
+  is the only value directly labeled otherwise, so per dataviz's own
+  labeling rule the ticks earn their place).
+- **7-day rolling average** (day granularity only, a toggle button next to
+  the granularity control) — replaces the raw received/resolved lines with
+  their smoothed equivalents rather than adding two more lines alongside
+  them; a 4-line chart reads as noise, and smoothing exists specifically
+  to replace noisy raw data, not sit next to it. Computed client-side from
+  already-fetched rows, no separate endpoint.
+- **Net difference** (received − resolved), as a small diverging bar strip
+  underneath — always the *raw* daily numbers regardless of the smoothing
+  toggle above, since the point is to see the real day-to-day imbalance,
+  not a smoothed one. A bar above zero means received outpaced resolved
+  that period (backlog growing, warning color); below zero means the
+  opposite (backlog shrinking, good color). Its own small chart rather
+  than a third line on the volume chart's shared axis — net can be
+  negative and carries a different kind of meaning than a raw count, same
+  "two measures of different scale → two charts" reasoning the Backlog
+  panel already follows.
 
 **Avg. resolution time** (`/stats/resolution-trend?granularity=month|quarter|year&sla=<hours>`)
-— unchanged from before, plus an SLA compliance rate: `slaCompliantCount`/
+— an SLA compliance rate alongside the average: `slaCompliantCount`/
 `slaComplianceRate` alongside `avgHours`/`count`, bound to `sla` at query
 time (default 48) rather than baked into the SQL, so any threshold works
 without re-preparing statements. All-time by design, same as the "Avg.
-resolution time" tile it extends — a process metric, not a volume figure,
-so unlike the panels above it isn't scoped to `TOTAL_SINCE`.
-`resolved_at IS NOT NULL` already excludes rows with no reliable timing
-data on its own. Periods with no resolved rows simply don't appear (no
-zero-filling — unlike the volume panel, a KPI trend has no fixed window to
-fill gaps in).
+resolution time" tile it originally extended (since removed from Overview
+as a standalone tile — this panel and "Resolution time by priority" below
+now carry that information) — a process metric, not a volume figure, so
+unlike the panels above it isn't scoped to `TOTAL_SINCE`. `resolved_at IS
+NOT NULL` already excludes rows with no reliable timing data on its own.
+Periods with no resolved rows simply don't appear (no zero-filling —
+unlike the volume panel, a KPI trend has no fixed window to fill gaps in).
 
 **First response time** (`/stats/first-response-trend?granularity=month|quarter|year`)
 — same idea, grouped by `first_replied_at` instead of `resolved_at`, and
@@ -505,25 +534,50 @@ graph/poller.js, the active repair pass that shrinks this gap over time).
 Accepted given the volume this affects is small, rather than adding a
 second closure-timestamp column for a KPI this workflow-adjacent.
 
-## Status mix donut (`/stats/status-by-period`)
+**Status mix** (`/stats/status-by-period?granularity=month|quarter|year`) —
+a stacked bar (`StackedBar.jsx`), not a donut: replaced the original
+"Enquiries by status" bar list with a donut chart first, then replaced
+that with a stacked bar once it was in front of real usage — per the
+dataviz reference this project follows, a stacked bar is the actual
+default for part-to-whole (donut is a deprioritized carve-out for a
+handful of segments), so this reverses that earlier call. Scoped to
+*enquiries received in* the current period rather than the all-time-since-
+`TOTAL_SINCE` snapshot the original bar list showed — "what's the status
+mix of what came in this month" is a more useful operational question than
+"since tracking began" (that all-time view is still reachable via the
+Queue page's own status filter). Shares the same global month/quarter/year
+control as the three panels above it (a separate day option existed
+briefly and was dropped in that consolidation — see the global control
+note above). Segment order follows a fixed status order, not sorted by
+value — "color follows the entity, never its rank." Every segment's
+count/share is always shown in the legend (never gated behind hover);
+hovering or focusing a segment additionally highlights it via a native
+`title`, no custom tooltip needed at this level of compactness.
 
-Replaced the old "Enquiries by status" bar list on Overview — same
-underlying counts, but as a donut with a Day/Month/Quarter toggle scoping
-it to *enquiries received in* the current (possibly still in-progress)
-period, rather than a single all-time-since-`TOTAL_SINCE` snapshot. "What's
-the status mix of what came in today/this month/this quarter" reads as a
-more useful operational question than "what's the status mix of
-everything since tracking began" — that all-time view is still available,
-just via the Queue page's own status filter rather than a dedicated panel.
+## Action queue
 
-No "year" granularity (day/month/quarter only) — deliberately matches what
-was asked for, not the KPI trend panels' month/quarter/year set. Segment
-order follows a fixed status order, not sorted by value, same "color
-follows the entity, never its rank" reasoning as everywhere else colors
-are assigned by identity on this page. Every segment's count/share is
-always shown in the legend (never gated behind hover) — hovering or
-focusing a segment (mouse or keyboard) additionally shows a tooltip and
-dims the others.
+Replaced the single "oldest unactioned enquiry" banner with the 5
+longest-waiting still-open enquiries (`oldestOpenQueue` in
+`overviewStats()` — `listOldestOpenEnquiries`-equivalent query, `ORDER BY
+received_at ASC LIMIT 5`), each showing age, priority, category, subject,
+and sender. **No owner column**: `assigned_to` is an unused schema column
+today — nothing reads or writes it, no UI surfaces it — so there's no real
+assignment data to show. Adding a real assignment feature (who's on this,
+a filterable "unassigned" queue) is future work, not something this panel
+fakes with an empty/placeholder value.
+
+## Category Pareto view
+
+"Enquiries by category" (`byCategory` in `/stats/overview`, unchanged
+endpoint) is still descending by count, now with a running cumulative
+share folded into each label ("... (cum. 68%)") — no new endpoint, computed
+client-side in Overview.jsx. A classic Pareto chart pairs bars with a
+cumulative-% line on a second axis, which is the single biggest chart
+anti-pattern this project avoids elsewhere (never a dual-axis chart), so
+the cumulative figure is a direct label rather than a second scale.
+Deliberately doesn't highlight specific categories as "automation
+candidates" — which ones count as one is a real judgment call for whoever
+owns the queue, not something to guess at and bake in silently.
 
 ## Folder tree enumeration (`/folder-map`)
 

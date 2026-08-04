@@ -2,7 +2,9 @@ import { useState } from 'react';
 
 const WIDTH = 600;
 const HEIGHT = 160;
-const PAD_LEFT = 8;
+// Wider than the other three pads — this is where the Y-axis value labels
+// live now, not just breathing room.
+const PAD_LEFT = 34;
 const PAD_RIGHT = 8;
 const PAD_TOP = 12;
 const PAD_BOTTOM = 8;
@@ -27,6 +29,12 @@ export function DualTrendChart({ data, xKey, seriesA, seriesB, xFormat, format }
   const plotW = WIDTH - PAD_LEFT - PAD_RIGHT;
   const plotH = HEIGHT - PAD_TOP - PAD_BOTTOM;
   const max = Math.max(...data.map((d) => Math.max(d[seriesA.key], d[seriesB.key])), 1);
+  // Y-axis ticks at 0/half/max — "round to clean numbers ... they carry
+  // the values you didn't directly label, so keep them unless every value
+  // is directly labeled" (only the hovered point is, here). Values in this
+  // chart are enquiry counts (tens, not thousands), so plain integers
+  // rather than K/M-style compaction.
+  const yTicks = [0, max / 2, max];
 
   const xFor = (i) => PAD_LEFT + (data.length === 1 ? 0 : (i / (data.length - 1)) * plotW);
   const yFor = (v) => PAD_TOP + plotH - (v / max) * plotH;
@@ -70,7 +78,14 @@ export function DualTrendChart({ data, xKey, seriesA, seriesB, xFormat, format }
         onMouseMove={handleMove}
         onMouseLeave={() => setHoverIndex(null)}
       >
-        <line x1={PAD_LEFT} y1={baseline} x2={WIDTH - PAD_RIGHT} y2={baseline} stroke="var(--gridline)" strokeWidth="1" />
+        {yTicks.map((v) => (
+          <g key={v}>
+            <line x1={PAD_LEFT} y1={yFor(v).toFixed(1)} x2={WIDTH - PAD_RIGHT} y2={yFor(v).toFixed(1)} stroke="var(--gridline)" strokeWidth="1" />
+            <text x={PAD_LEFT - 6} y={yFor(v) + 3} textAnchor="end" className="trend-chart-ytick">
+              {Math.round(v).toLocaleString()}
+            </text>
+          </g>
+        ))}
         <path d={areaFor(seriesA.key)} fill={seriesA.color} opacity="0.08" stroke="none" />
         <path d={pathFor(seriesA.key)} fill="none" stroke={seriesA.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         <path d={areaFor(seriesB.key)} fill={seriesB.color} opacity="0.08" stroke="none" />

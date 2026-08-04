@@ -26,6 +26,41 @@ const MAX_PAGES = Math.ceil(MAX_MESSAGES_PER_POLL / PAGE_SIZE) + 10;
 // the recurring per-minute Inbox poll MAX_MESSAGES_PER_POLL is tuned for.
 const MAX_BACKFILL_MESSAGES = Number(process.env.MAX_BACKFILL_MESSAGES) || 5000;
 const MAX_BACKFILL_PAGES = Math.ceil(MAX_BACKFILL_MESSAGES / PAGE_SIZE) + 10;
+// Deliberate small pause between folder-tree calls (see fetchFolderTree) —
+// a wide, deeply-nested tree is many sequential requests even with nothing
+// throttling yet, so this spaces them out rather than firing as fast as
+// possible and inviting a 429.
+const FOLDER_WALK_DELAY_MS = Number(process.env.FOLDER_WALK_DELAY_MS) || 300;
+// Safety net against a cyclic/malformed parentFolderId chain — real
+// mailboxes don't nest this deep, so hitting this means something's wrong
+// rather than "just needs a higher limit."
+const MAX_FOLDER_DEPTH = 20;
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Wraps a Graph GET with 429 handling — honors Retry-After when Graph sends
+// one (observed ~60s in this mailbox), falls back to capped exponential
+// backoff otherwise. Any other non-OK status still throws immediately, same
+// as every other fetch in this file — only 429 gets retried.
+async function fetchWithBackoff(url, token, maxRetries = 5) {
+  for (let attempt = 0; attempt <= maxRetries; attempt += 1) {
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (res.status !== 429) {
+      if (!res.ok) {
+        const body = await res.text();
+        throw new Error(`Graph API error ${res.status}: ${body}`);
+      }
+      return res;
+    }
+    const retryAfterHeader = res.headers.get('Retry-After');
+    const waitSec = retryAfterHeader ? Number(retryAfterHeader) : Math.min(2 ** attempt, 60);
+    console.warn(`[graph-client] 429 rate limited — waiting ${waitSec}s (attempt ${attempt + 1}/${maxRetries}) for ${url}`);
+    await sleep(waitSec * 1000);
+  }
+  throw new Error(`Graph API: exceeded ${maxRetries} retries after repeated 429s for ${url}`);
+}
 
 function isConfigured() {
   return !!(process.env.TENANT_ID && process.env.CLIENT_ID && process.env.CLIENT_SECRET && process.env.MAILBOX);
@@ -172,6 +207,74 @@ async function fetchAllMailboxMessagesSince(sinceIso) {
     movedOutOfInbox: msg.parentFolderId !== inboxFolderId,
     lastModifiedDateTime: msg.lastModifiedDateTime || null,
   }));
+}
+
+/**
+ * Recursively enumerate the FULL mail folder tree for a mailbox, from the
+ * top-level folders down through every level of nesting — never by
+ * displayName. Name-based folder lookup (e.g. Graph's
+ * /mailFolders?$filter=displayName eq '...', or anything that falls back to
+ * scanning the whole tree for a non-exact/non-well-known name) was tested
+ * directly against this mailbox and found unreliable: some plain-looking
+ * names resolved fine, others 404'd for no explainable reason (not
+ * hierarchy, not smart-quote vs straight-quote — apostrophe'd names failed
+ * even with the apostrophe stripped), and repeated failed lookups triggered
+ * 429s since the underlying fallback apparently re-scans the mailbox each
+ * time. Walking the tree by id, once, and keeping that map is the only
+ * reliable approach.
+ *
+ * Returns every folder as { id, displayName, parentFolderId,
+ * childFolderCount, totalItemCount, unreadItemCount, fullPath }, where
+ * fullPath is reconstructed by walking each folder's parent chain (e.g.
+ * "Inbox > Client Enquiries > 1. CUST SERVICE EMAILS") — the real nesting,
+ * not the "Favorites" list Outlook's UI shows (that's a separate,
+ * display-only grouping, not the actual folder hierarchy).
+ */
+async function fetchFolderTree(mailboxEmail) {
+  const token = await getAccessToken();
+  const mailbox = encodeURIComponent(mailboxEmail);
+  const select = '$select=id,displayName,parentFolderId,childFolderCount,totalItemCount,unreadItemCount';
+  const folders = new Map();
+
+  async function walk(url, depth) {
+    if (depth > MAX_FOLDER_DEPTH) {
+      console.warn(`[graph-client] fetchFolderTree: hit MAX_FOLDER_DEPTH (${MAX_FOLDER_DEPTH}) at ${url} — stopping this branch, likely a cyclic or malformed parentFolderId.`);
+      return;
+    }
+    let currentUrl = url;
+    while (currentUrl) {
+      const res = await fetchWithBackoff(currentUrl, token);
+      const data = await res.json();
+      for (const f of data.value || []) {
+        folders.set(f.id, {
+          id: f.id,
+          displayName: f.displayName,
+          parentFolderId: f.parentFolderId || null,
+          childFolderCount: f.childFolderCount,
+          totalItemCount: f.totalItemCount,
+          unreadItemCount: f.unreadItemCount,
+        });
+        if (f.childFolderCount > 0) {
+          await sleep(FOLDER_WALK_DELAY_MS);
+          await walk(`${GRAPH_BASE}/users/${mailbox}/mailFolders/${f.id}/childFolders?${select}&$top=100`, depth + 1);
+        }
+      }
+      currentUrl = data['@odata.nextLink'] || null;
+    }
+  }
+
+  await walk(`${GRAPH_BASE}/users/${mailbox}/mailFolders?${select}&$top=100`, 0);
+
+  function fullPathFor(id, seen) {
+    const folder = folders.get(id);
+    if (!folder) return '(unknown parent)';
+    if (seen.has(id)) return `${folder.displayName} (cycle detected)`;
+    seen.add(id);
+    if (!folder.parentFolderId || !folders.has(folder.parentFolderId)) return folder.displayName;
+    return `${fullPathFor(folder.parentFolderId, seen)} > ${folder.displayName}`;
+  }
+
+  return Array.from(folders.values()).map((f) => ({ ...f, fullPath: fullPathFor(f.id, new Set()) }));
 }
 
 function chunk(arr, size) {
@@ -427,6 +530,7 @@ module.exports = {
   isConfigured,
   fetchMessagesSince,
   fetchAllMailboxMessagesSince,
+  fetchFolderTree,
   fetchMessageFlags,
   fetchReplyStatus,
   fetchConversationMessages,

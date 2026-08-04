@@ -108,6 +108,7 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 | `GET /api/stats/overview` | Counts by category/status/priority/facility, aging buckets, open workload by assignee, 30-day daily volume, avg resolution time (gated behind a minimum sample size) |
 | `GET /api/ingest/status` | Whether live Graph polling and AI classification are configured |
 | `POST /api/ingest/run` | Manually trigger one poll cycle (Inbox only) |
+| `GET /api/ingest/folder-map?mailbox=<address>` | CSV of every mail folder, walked by id — see "Folder tree enumeration" below |
 | `POST /api/ingest/backfill-all-folders?since=<date>` | One-off historical catch-up across every folder + full reassessment — see "Historical catch-up" below |
 
 ## AI classification
@@ -429,6 +430,35 @@ actually have a `resolved_at`, so the Overview tile explicitly
 distinguishes "no resolved enquiries yet" from "N resolved, but timing
 data isn't available yet" (the latter is normal right after deploying this
 — it clears up as the backfill runs).
+
+## Folder tree enumeration (`/folder-map`)
+
+`GET /api/ingest/folder-map?mailbox=<address>` returns a CSV of every mail
+folder in a mailbox — `id`, `displayName`, `full_path`, `parentFolderId`,
+`childFolderCount`, `totalItemCount`, `unreadItemCount` — walked recursively
+by folder **id**, never by `displayName`. `mailbox` defaults to whatever
+`MAILBOX` is already configured to.
+
+**Why by id, not by name.** Tested directly against a mailbox with ~30
+custom folders: some plain-looking names resolved fine, others 404'd for no
+explainable reason (not hierarchy depth, not a smart-quote/straight-quote
+issue — apostrophe'd names failed even with the apostrophe stripped), and
+repeated failed lookups triggered Graph 429s — the underlying name-lookup
+fallback apparently re-scans the whole mailbox tree on any non-exact,
+non-well-known name. Walking the tree by id once, top-level `mailFolders`
+down through every level of `childFolders` (not assuming Outlook's
+"Favorites" sidebar grouping reflects the real hierarchy — it doesn't), is
+the only approach that doesn't depend on name-matching working at all
+(`fetchFolderTree` in `graph/client.js`). `fullPath` is reconstructed by
+walking each folder's parent chain after the whole tree is known.
+
+Includes 429 handling — honors `Retry-After` when Graph sends one, capped
+exponential backoff otherwise — and a deliberate small pause between calls
+during the walk itself, since a deep/wide tree is many sequential requests
+even before anything throttles.
+
+This is a read-only `GET` — nothing here writes to the database or the
+mailbox, safe to run as often as you want.
 
 ## Historical catch-up: pulling all folders + reassessing (`/backfill-all-folders`)
 

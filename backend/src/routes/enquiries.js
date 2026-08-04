@@ -3,6 +3,7 @@ const repo = require('../db/repository');
 const aiClassifier = require('../ai/classifier');
 const graphClient = require('../graph/client');
 const { CATEGORIES } = require('../triage/classify');
+const { toCsv } = require('../utils/csv');
 
 const router = express.Router();
 
@@ -47,14 +48,6 @@ const CSV_COLUMNS = [
   ['Classified by', (e) => e.classifiedBy || ''],
 ];
 
-// Double up any embedded quotes and wrap the field if it contains a comma,
-// quote, or newline — the minimal correct CSV escaping rule, no library
-// needed for a field set this simple.
-function csvField(value) {
-  const s = String(value ?? '');
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
 // Same filters as the queue view, no pagination — for management/board
 // reporting rather than working the queue itself, so drafts/body content
 // are deliberately left out in favour of a lean, reportable column set.
@@ -70,14 +63,9 @@ router.get('/export', (req, res) => {
     order: order || undefined,
   });
 
-  const lines = [CSV_COLUMNS.map(([header]) => csvField(header)).join(',')];
-  for (const item of items) {
-    lines.push(CSV_COLUMNS.map(([, get]) => csvField(get(item))).join(','));
-  }
-
   res.set('Content-Type', 'text/csv; charset=utf-8');
   res.set('Content-Disposition', `attachment; filename="enquiries-export-${new Date().toISOString().slice(0, 10)}.csv"`);
-  res.send(lines.join('\n'));
+  res.send(toCsv(CSV_COLUMNS, items));
 });
 
 router.get('/:id', (req, res) => {

@@ -6,6 +6,7 @@ const {
   statusForReply,
   statusForMissingMessage,
   statusForFolderMove,
+  statusForConfirmedSpam,
 } = require('./repository');
 
 // Pure-function tests for the "how does an enquiry get marked closed" logic
@@ -81,4 +82,25 @@ test('statusForFolderMove: moved out of Inbox resolves', () => {
 test('statusForFolderMove: still in Inbox is not a signal', () => {
   assert.equal(statusForFolderMove(false), null);
   assert.equal(statusForFolderMove(undefined), null);
+});
+
+test('statusForConfirmedSpam: non-spam categories are never a signal', () => {
+  assert.equal(statusForConfirmedSpam('PRODUCT_ENQUIRY', 'ai', 0.99), null);
+  assert.equal(statusForConfirmedSpam('INTERNAL', 'rules', 1), null);
+});
+
+test('statusForConfirmedSpam: rules/rules-fallback/manual are always trusted', () => {
+  assert.equal(statusForConfirmedSpam('SPAM_NOTIFICATION', 'rules', 1), 'IGNORED');
+  assert.equal(statusForConfirmedSpam('SPAM_NOTIFICATION', 'rules-fallback', null), 'IGNORED');
+  assert.equal(statusForConfirmedSpam('SPAM_NOTIFICATION', 'manual', null), 'IGNORED');
+});
+
+test('statusForConfirmedSpam: AI spam is gated on confidence', () => {
+  assert.equal(statusForConfirmedSpam('SPAM_NOTIFICATION', 'ai', 0.9), 'IGNORED');
+  assert.equal(statusForConfirmedSpam('SPAM_NOTIFICATION', 'ai', 0.5), 'IGNORED');
+});
+
+test('statusForConfirmedSpam: low-confidence AI spam stays a signal-free NEW for review', () => {
+  assert.equal(statusForConfirmedSpam('SPAM_NOTIFICATION', 'ai', 0.49), null);
+  assert.equal(statusForConfirmedSpam('SPAM_NOTIFICATION', 'ai', null), null);
 });

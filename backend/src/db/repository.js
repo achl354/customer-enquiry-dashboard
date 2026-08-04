@@ -5,6 +5,11 @@ function nowIso() {
   return new Date().toISOString();
 }
 
+// Shared by listEnquiries/the CSV export's lowConfidence filter, the
+// Overview "needs review" tile, and statusForConfirmedSpam below — one
+// place so none of them can drift apart from each other.
+const LOW_CONFIDENCE_THRESHOLD = 0.5;
+
 // Maps an Outlook follow-up flag (staff already use this in Outlook itself)
 // to a dashboard status. Returns null for 'notFlagged'/unknown — that's not
 // a signal either way, not evidence the enquiry is still new.
@@ -67,6 +72,25 @@ function statusForFolderMove(movedOutOfInbox) {
   return movedOutOfInbox ? 'RESOLVED' : null;
 }
 
+// Confirmed spam/notification noise shouldn't count as backlog (sitting
+// open forever, nobody's ever going to reply to it) or, once it eventually
+// leaves the Inbox, as a genuine RESOLVED — resolving a real enquiry is a
+// different thing from an email that was never one. IGNORED already means
+// exactly "no action needed," so it's reused rather than adding a new
+// status.
+//
+// Gated on confidence: a rules-based (or rules-fallback, or manual) call is
+// always trusted, since those are deterministic/explicit, not a guess. An
+// AI call below LOW_CONFIDENCE_THRESHOLD is deliberately NOT auto-ignored —
+// a real customer enquiry the AI misreads as spam at low confidence needs
+// to stay visible (as NEW, in the existing "needs review" list) rather than
+// being silently hidden with nothing ever flagging it for a second look.
+function statusForConfirmedSpam(category, classifiedBy, confidence) {
+  if (category !== 'SPAM_NOTIFICATION') return null;
+  const isConfident = classifiedBy !== 'ai' || (confidence != null && confidence >= LOW_CONFIDENCE_THRESHOLD);
+  return isConfident ? 'IGNORED' : null;
+}
+
 // Status "rank" so reply-detection (and anything similar) can only ever
 // advance an enquiry forward, never undo a status staff already set
 // themselves — e.g. a stale/old reply shouldn't demote a RESOLVED enquiry
@@ -85,6 +109,18 @@ const STATUS_RANK = { NEW: 0, IN_PROGRESS: 1, WAITING_ON_CUSTOMER: 2, RESOLVED: 
 // logic says it means.
 const CLOSED_STATUSES = ['RESOLVED', 'IGNORED', 'DISMISSED'];
 const CLOSED_STATUS_SQL = CLOSED_STATUSES.map((s) => `'${s}'`).join(', ');
+
+// One-time reclassification, not a schema change — same confidence gate as
+// statusForConfirmedSpam above, backfilled for anything ingested before
+// that existed (or ingested since, if the Outlook flag/category sync ran
+// first and left it open under some other signal). Runs on every boot; a
+// no-op once nothing open matches this.
+db.prepare(
+  `UPDATE enquiries SET status = 'IGNORED', updated_at = @updatedAt
+   WHERE category = 'SPAM_NOTIFICATION'
+     AND status IN ('NEW', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER')
+     AND (classified_by != 'ai' OR confidence >= @lowConfidenceThreshold)`
+).run({ updatedAt: nowIso(), lowConfidenceThreshold: LOW_CONFIDENCE_THRESHOLD });
 
 // A reply/forward was found in Sent Items for this enquiry's conversation.
 // Customer-facing (recipients overlap the original external sender's domain)
@@ -158,7 +194,11 @@ async function ingestEmail(raw) {
     draftReply: result.draftReply || null,
     confidence: result.confidence == null ? null : result.confidence,
     classifiedBy: result.classifiedBy || 'rules',
-    status: statusForCategories(raw.categories) || statusForFlag(raw.flagStatus) || 'NEW',
+    status:
+      statusForCategories(raw.categories) ||
+      statusForFlag(raw.flagStatus) ||
+      statusForConfirmedSpam(result.category, result.classifiedBy, result.confidence) ||
+      'NEW',
     createdAt: timestamp,
     updatedAt: timestamp,
   });
@@ -211,11 +251,6 @@ const SORT_COLUMNS = {
 
 // Shared by listEnquiries and the CSV export — both filter the same way,
 // the export just skips LIMIT/OFFSET to return every matching row.
-// Same 0.5 threshold the Detail page uses to flag a classification as
-// "low confidence — worth a second look", kept in one place so the Overview
-// tile's count and this filter can never drift apart.
-const LOW_CONFIDENCE_THRESHOLD = 0.5;
-
 function buildWhereClause({ category, priority, status, search, lowConfidence }) {
   const clauses = [];
   const params = {};
@@ -531,4 +566,5 @@ module.exports = {
   statusForReply,
   statusForMissingMessage,
   statusForFolderMove,
+  statusForConfirmedSpam,
 };

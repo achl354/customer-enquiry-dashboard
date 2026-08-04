@@ -200,7 +200,17 @@ router.patch('/:id/category', (req, res) => {
     return res.status(400).json({ error: `Invalid category: ${category}` });
   }
 
-  const updated = repo.updateEnquiry(req.params.id, { category, classifiedBy: 'manual', confidence: null });
+  const patch = { category, classifiedBy: 'manual', confidence: null };
+  // Recategorizing to spam is an explicit staff call, always trusted (same
+  // as statusForConfirmedSpam's non-AI branch) — shouldn't keep counting as
+  // backlog (NEW/IN_PROGRESS/WAITING_ON_CUSTOMER) or as a genuine RESOLVED.
+  // Left alone if staff already DISMISSED it — that's a more deliberate
+  // override this shouldn't second-guess.
+  if (category === 'SPAM_NOTIFICATION' && existing.status !== 'DISMISSED') {
+    patch.status = 'IGNORED';
+  }
+
+  const updated = repo.updateEnquiry(req.params.id, patch);
   res.json(updated);
 });
 

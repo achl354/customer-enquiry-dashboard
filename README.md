@@ -367,6 +367,37 @@ enquiry already sitting at the old `REMOVED` status gets reclassified to
 `UPDATE` in `db/index.js` — a no-op after the first run since nothing
 writes `REMOVED` anymore).
 
+## Status sync (confirmed spam)
+
+Spam/notification noise shouldn't count as open backlog (sitting in the
+queue forever, nobody's ever replying to it) or, once it eventually leaves
+the Inbox via the folder-move sync above, as a genuine `RESOLVED` —
+resolving a real enquiry is different work from an email that was never
+one. Rather than a new status, confirmed spam reuses `IGNORED`
+(`statusForConfirmedSpam` in `db/repository.js`), applied in three places:
+
+- **At ingestion** — a message the classifier tags `SPAM_NOTIFICATION`
+  gets `IGNORED` instead of `NEW` from the start (checked after the
+  Outlook flag/category signals, same priority `statusForFolderMove` has).
+- **On manual recategorization** — choosing "Spam / notification" from the
+  category dropdown on the Detail page also sets status to `IGNORED`
+  (unless the enquiry is already `DISMISSED`, which is left alone as a
+  more deliberate override). This one always trusts the call, since it's
+  an explicit staff action, not a guess.
+- **Backfill** — any enquiry already in the database at `SPAM_NOTIFICATION`
+  with a still-open status gets reclassified the same way on next server
+  start (same idempotent-migration pattern as the `REMOVED` one above).
+
+**Gated on confidence, not applied blindly.** "Confirmed" is the key word:
+a rules-based classification (deterministic, including the noise-sender
+short-circuit and the AI-failure fallback) is always trusted. An AI
+classification below the existing 50% "needs review" threshold
+(`LOW_CONFIDENCE_THRESHOLD`) is deliberately **not** auto-ignored — a real
+customer enquiry the AI misreads as spam at low confidence stays visible
+as `NEW` and shows up in the existing low-confidence review list, rather
+than being silently hidden with nothing ever flagging it for a second
+look.
+
 ## Access control (Basic Auth)
 
 The dashboard shows real customer/health-department correspondence with no

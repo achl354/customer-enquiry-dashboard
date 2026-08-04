@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { getOverviewStats, getIngestStatus } from '../api';
+import { getOverviewStats, getIngestStatus, getResolutionTrend } from '../api';
 import { BarList } from '../components/BarList';
 import { DualTrendChart } from '../components/DualTrendChart';
 import { OverviewSkeleton } from '../components/Skeletons';
@@ -62,10 +62,35 @@ function formatWeekStart(d) {
 
 const STATUS_ORDER = ['NEW', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER', 'RESOLVED', 'IGNORED', 'DISMISSED'];
 
+const TREND_GRANULARITIES = [
+  { key: 'month', label: 'Month' },
+  { key: 'quarter', label: 'Quarter' },
+  { key: 'year', label: 'Year' },
+];
+
+// Period strings come straight from the backend's SQL grouping (see
+// resolutionTimeTrend in db/repository.js): "2026-07" for month, "2026-Q3"
+// for quarter, "2026" for year — reformatted here for display only, never
+// used for sorting/comparison (the backend already returns them in order).
+function formatTrendPeriod(period, granularity) {
+  if (granularity === 'month') {
+    const [y, m] = period.split('-');
+    return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+  }
+  if (granularity === 'quarter') {
+    const [y, q] = period.split('-');
+    return `${q} ${y}`;
+  }
+  return period;
+}
+
 export default function Overview() {
   const [stats, setStats] = useState(null);
   const [error, setError] = useState(null);
   const [mailbox, setMailbox] = useState(null);
+  const [trendGranularity, setTrendGranularity] = useState('month');
+  const [resolutionTrend, setResolutionTrend] = useState(null);
+  const [resolutionTrendError, setResolutionTrendError] = useState(null);
 
   useEffect(() => {
     const load = () => getOverviewStats().then(setStats).catch((e) => setError(e.message));
@@ -73,6 +98,33 @@ export default function Overview() {
     const interval = setInterval(load, STATS_REFRESH_MS);
     return () => clearInterval(interval);
   }, []);
+
+  // Separate fetch from the main stats poll above — this is a reporting
+  // view the operator switches granularity on, not something that needs to
+  // refresh every 60s like the live counts do. Re-fetches whenever the
+  // granularity toggle changes; the abort guards against a slow response
+  // for a granularity the operator has already clicked away from landing
+  // after a newer one already did.
+  useEffect(() => {
+    const controller = new AbortController();
+    // Reset to the loading state immediately rather than leaving the
+    // previous granularity's rows on screen — formatTrendPeriod parses
+    // periods differently per granularity (e.g. "2026-07" vs "2026-Q3"),
+    // so stale rows would briefly render under the new granularity's label
+    // format otherwise.
+    setResolutionTrend(null);
+    setResolutionTrendError(null);
+    getResolutionTrend(trendGranularity, { signal: controller.signal })
+      .then((rows) => {
+        setResolutionTrend(rows);
+        setResolutionTrendError(null);
+      })
+      .catch((e) => {
+        if (e.name === 'AbortError') return;
+        setResolutionTrendError(e.message);
+      });
+    return () => controller.abort();
+  }, [trendGranularity]);
 
   // One-time — the mailbox address is static config, not something that
   // changes while the page is open, unlike stats.
@@ -118,6 +170,19 @@ export default function Overview() {
     if (!stats) return [];
     return stats.agingBuckets.map((b) => ({ key: b.bucket, value: b.count, label: b.bucket }));
   }, [stats]);
+
+  // count folded into the label (not a second BarList series) since these
+  // two numbers are on completely different scales (hours vs. a count) —
+  // same reasoning DualTrendChart's shared-axis limitation would otherwise
+  // run into if avgHours and count were plotted together.
+  const resolutionTrendData = useMemo(() => {
+    if (!resolutionTrend) return [];
+    return resolutionTrend.map((r) => ({
+      key: r.period,
+      value: r.avgHours,
+      label: `${formatTrendPeriod(r.period, trendGranularity)} (${r.count} resolved)`,
+    }));
+  }, [resolutionTrend, trendGranularity]);
 
   if (error) return <div className="error-state">Failed to load stats: {error}</div>;
   if (!stats) return <OverviewSkeleton />;
@@ -239,6 +304,35 @@ export default function Overview() {
           </p>
         </div>
       )}
+
+      <div className="panel">
+        <div className="panel-header-row">
+          <h3>Avg. resolution time by {trendGranularity}</h3>
+          <div className="panel-toggle">
+            {TREND_GRANULARITIES.map((g) => (
+              <button
+                key={g.key}
+                type="button"
+                className={`panel-toggle-btn${trendGranularity === g.key ? ' active' : ''}`}
+                onClick={() => setTrendGranularity(g.key)}
+              >
+                {g.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        {resolutionTrendError ? (
+          <p className="draft-hint" style={{ margin: 0 }}>Failed to load: {resolutionTrendError}</p>
+        ) : resolutionTrend === null ? (
+          <p className="draft-hint" style={{ margin: 0 }}>Loading…</p>
+        ) : resolutionTrendData.length > 0 ? (
+          <BarList data={resolutionTrendData} format={(h) => `${h.toFixed(1)}h`} />
+        ) : (
+          <p className="draft-hint" style={{ margin: 0 }}>
+            No resolved enquiries with known resolution time yet.
+          </p>
+        )}
+      </div>
 
       <div className="chart-grid">
         <div className="panel">

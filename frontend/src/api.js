@@ -69,6 +69,10 @@ export function getOverviewStats() {
   return request('/stats/overview');
 }
 
+export function getResolutionTrend(granularity, options = {}) {
+  return request(`/stats/resolution-trend?granularity=${encodeURIComponent(granularity)}`, options);
+}
+
 export function getIngestStatus() {
   return request('/ingest/status');
 }

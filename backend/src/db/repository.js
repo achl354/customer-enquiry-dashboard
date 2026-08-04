@@ -526,6 +526,44 @@ const lowConfidenceCountStmt = db.prepare(
 const resolutionStatsStmt = db.prepare(
   "SELECT AVG((julianday(resolved_at) - julianday(received_at)) * 24) as avgHours, COUNT(*) as count FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL"
 );
+
+// KPI rollup for the resolution-time trend panel — one prepared statement
+// per granularity (SQLite has no native quarter grouping, so that one is
+// built from year + a computed 3-month bucket). All-time, same as
+// resolutionStatsStmt above and for the same reason: this is a process
+// metric (how fast are we resolving things), not a volume figure, so it
+// isn't scoped to TOTAL_SINCE — resolved_at IS NOT NULL already excludes
+// rows with no reliable timing data (pre-resolved_at, or confirmed-missing
+// messages with nothing left to ask Graph about).
+const RESOLUTION_TREND_STMTS = {
+  month: db.prepare(
+    `SELECT strftime('%Y-%m', resolved_at) as period,
+            AVG((julianday(resolved_at) - julianday(received_at)) * 24) as avgHours,
+            COUNT(*) as count
+     FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL
+     GROUP BY period ORDER BY period ASC`
+  ),
+  quarter: db.prepare(
+    `SELECT strftime('%Y', resolved_at) || '-Q' || ((CAST(strftime('%m', resolved_at) AS INTEGER) - 1) / 3 + 1) as period,
+            AVG((julianday(resolved_at) - julianday(received_at)) * 24) as avgHours,
+            COUNT(*) as count
+     FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL
+     GROUP BY period ORDER BY period ASC`
+  ),
+  year: db.prepare(
+    `SELECT strftime('%Y', resolved_at) as period,
+            AVG((julianday(resolved_at) - julianday(received_at)) * 24) as avgHours,
+            COUNT(*) as count
+     FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL
+     GROUP BY period ORDER BY period ASC`
+  ),
+};
+
+function resolutionTimeTrend(granularity) {
+  const stmt = RESOLUTION_TREND_STMTS[granularity];
+  if (!stmt) throw new Error(`Invalid granularity: ${granularity}. Use month, quarter, or year.`);
+  return stmt.all();
+}
 // Scoped to TOTAL_SINCE, same as the "Total enquiries" stat this chart sits
 // next to — querying all-time here (as this used to) mixes in pre-tracking
 // seed/backfill data "Total enquiries" deliberately excludes, so the two
@@ -719,4 +757,5 @@ module.exports = {
   statusForMissingMessage,
   statusForFolderMove,
   statusForConfirmedSpam,
+  resolutionTimeTrend,
 };

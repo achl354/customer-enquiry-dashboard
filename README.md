@@ -105,7 +105,8 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 | `PATCH /api/enquiries/:id/category` | Manual recategorization (`status` has no direct-set endpoint at all — it's derived from Outlook, see "Status sync" below, with `DELETE` as the one dashboard-native exception) |
 | `DELETE /api/enquiries/:id` | Detail page's "Delete" — sets `DISMISSED`, doesn't touch the real mailbox |
 | `GET /api/enquiries/export` | CSV export — same filters as the list endpoint, no pagination. Lean reporting column set (no draft/body content) |
-| `GET /api/stats/overview` | Counts by category/status/priority/facility, aging buckets, open workload by assignee, 30-day daily volume, avg resolution time (gated behind a minimum sample size) |
+| `GET /api/stats/overview` | Counts by category/status/priority/facility, aging buckets, open workload by assignee, daily/weekly volume since `TOTAL_SINCE`, avg resolution time (gated behind a minimum sample size) |
+| `GET /api/stats/resolution-trend?granularity=month\|quarter\|year` | Avg. resolution time rolled up by period, all-time — see "Resolution-time KPI trend" below |
 | `GET /api/ingest/status` | Whether live Graph polling and AI classification are configured |
 | `POST /api/ingest/run` | Manually trigger one poll cycle (Inbox only) |
 | `GET /api/ingest/folder-map?mailbox=<address>` | CSV of every mail folder, walked by id — see "Folder tree enumeration" below |
@@ -432,6 +433,25 @@ actually have a `resolved_at`, so the Overview tile explicitly
 distinguishes "no resolved enquiries yet" from "N resolved, but timing
 data isn't available yet" (the latter is normal right after deploying this
 — it clears up as the backfill runs).
+
+## Resolution-time KPI trend (`/stats/resolution-trend`)
+
+`GET /api/stats/resolution-trend?granularity=month|quarter|year` rolls the
+same `resolved_at`/`received_at` pair above up into a monthly/quarterly/
+annual average — the reporting view behind the Overview page's "Avg.
+resolution time by \<granularity\>" panel (a Month/Quarter/Year toggle over
+a bar per period). Returns `[{period, avgHours, count}]`, one row per
+period that has at least one `RESOLVED` row with a known `resolved_at`;
+periods with none simply don't appear (no zero-filling — unlike the daily
+chart, a KPI trend has no fixed window to fill gaps in). `period` is
+`"YYYY-MM"` for month, `"YYYY-Qn"` for quarter, `"YYYY"` for year.
+
+All-time by design, same as the "Avg. resolution time" tile it extends —
+this is a process metric (how fast are things getting resolved), not a
+volume figure, so it isn't scoped to `TOTAL_SINCE` the way `dailyFlow`/
+`weeklyFlow`/the by-category/status/priority/facility breakdowns are.
+`resolved_at IS NOT NULL` already excludes rows with no reliable timing
+data on its own.
 
 ## Folder tree enumeration (`/folder-map`)
 

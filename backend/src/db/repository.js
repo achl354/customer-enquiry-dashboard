@@ -526,52 +526,53 @@ const agingRowsStmt = db.prepare(
    WHERE status NOT IN (${CLOSED_STATUS_SQL})
    GROUP BY bucket`
 );
+// Anchored at TOTAL_SINCE (the same reporting-start date "Total enquiries"
+// uses) rather than a rolling last-30-days window — a rolling window drifts
+// out of sync with that date as time passes (today, it would already be
+// clipping off the first few days of July), and this chart exists
+// specifically to show volume since tracking began, not an arbitrary
+// trailing period.
 const dailyReceivedRowsStmt = db.prepare(
-  "SELECT date(received_at) as day, COUNT(*) as count FROM enquiries WHERE received_at >= datetime('now', '-30 days') GROUP BY day"
+  `SELECT date(received_at) as day, COUNT(*) as count FROM enquiries WHERE received_at >= '${TOTAL_SINCE}' GROUP BY day`
 );
-// updated_at doubles as "when it became resolved" — same proxy the avg
-// resolution-time stat above already uses, so a day is counted as
-// "resolved" here on whichever day the status last changed to RESOLVED.
+// resolved_at, not updated_at — see resolutionStatsStmt's comment above for
+// why updated_at can't be trusted as "when this was actually resolved."
+// Rows resolved before resolved_at existed (or whose message is confirmed
+// gone) are excluded here the same way, rather than guessed at.
 const dailyResolvedRowsStmt = db.prepare(
-  "SELECT date(updated_at) as day, COUNT(*) as count FROM enquiries WHERE status = 'RESOLVED' AND updated_at >= datetime('now', '-30 days') GROUP BY day"
+  `SELECT date(resolved_at) as day, COUNT(*) as count FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL AND resolved_at >= '${TOTAL_SINCE}' GROUP BY day`
 );
 
-// Trailing-7-day buckets (not calendar weeks) so "this week" always means
-// "the last 7 days," regardless of what day it is today.
-const WEEKLY_BUCKET_COUNT = 12;
-const WEEKLY_WINDOW_DAYS = WEEKLY_BUCKET_COUNT * 7;
-const receivedInWindowStmt = db.prepare(
-  `SELECT received_at FROM enquiries WHERE received_at >= datetime('now', '-${WEEKLY_WINDOW_DAYS} days')`
-);
+const receivedInWindowStmt = db.prepare(`SELECT received_at FROM enquiries WHERE received_at >= '${TOTAL_SINCE}'`);
 const resolvedInWindowStmt = db.prepare(
-  `SELECT updated_at FROM enquiries WHERE status = 'RESOLVED' AND updated_at >= datetime('now', '-${WEEKLY_WINDOW_DAYS} days')`
+  `SELECT resolved_at FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL AND resolved_at >= '${TOTAL_SINCE}'`
 );
 
-// Cumulative received vs. cumulative resolved over the trailing 12 weeks,
-// both restarting from 0 at the window start — the gap between the two
-// lines shows whether *this window's* intake is outpacing resolution, not
-// the mailbox's all-time backlog (that's what the Open stat tile is for).
+// Cumulative received vs. cumulative resolved since TOTAL_SINCE, both
+// restarting from 0 at that date — the gap between the two lines shows
+// whether intake since tracking began is outpacing resolution, not the
+// mailbox's all-time backlog (that's what the Open stat tile is for).
+// Bucket count grows by one every 7 days rather than staying fixed, so the
+// window never drifts out of sync with TOTAL_SINCE the way a rolling
+// trailing-N-weeks window would.
 function weeklyAccumulated() {
-  const receivedPerWeek = new Array(WEEKLY_BUCKET_COUNT).fill(0);
-  const resolvedPerWeek = new Array(WEEKLY_BUCKET_COUNT).fill(0);
+  const startMs = new Date(TOTAL_SINCE).getTime();
   const nowMs = Date.now();
   const dayMs = 24 * 60 * 60 * 1000;
+  const weekCount = Math.max(1, Math.ceil((nowMs - startMs) / (7 * dayMs)));
 
-  // Bucket 0 = oldest week in the window, last bucket = the most recent
-  // (current, possibly partial) 7 days.
-  const bucketIndexFor = (isoString) => {
-    const daysAgo = Math.floor((nowMs - new Date(isoString).getTime()) / dayMs);
-    const weeksAgo = Math.floor(daysAgo / 7);
-    return WEEKLY_BUCKET_COUNT - 1 - weeksAgo;
-  };
+  const receivedPerWeek = new Array(weekCount).fill(0);
+  const resolvedPerWeek = new Array(weekCount).fill(0);
+
+  const bucketIndexFor = (isoString) => Math.floor((new Date(isoString).getTime() - startMs) / (7 * dayMs));
 
   for (const row of receivedInWindowStmt.all()) {
     const idx = bucketIndexFor(row.received_at);
-    if (idx >= 0 && idx < WEEKLY_BUCKET_COUNT) receivedPerWeek[idx] += 1;
+    if (idx >= 0 && idx < weekCount) receivedPerWeek[idx] += 1;
   }
   for (const row of resolvedInWindowStmt.all()) {
-    const idx = bucketIndexFor(row.updated_at);
-    if (idx >= 0 && idx < WEEKLY_BUCKET_COUNT) resolvedPerWeek[idx] += 1;
+    const idx = bucketIndexFor(row.resolved_at);
+    if (idx >= 0 && idx < weekCount) resolvedPerWeek[idx] += 1;
   }
 
   let cumReceived = 0;
@@ -579,7 +580,7 @@ function weeklyAccumulated() {
   return receivedPerWeek.map((_, i) => {
     cumReceived += receivedPerWeek[i];
     cumResolved += resolvedPerWeek[i];
-    const weekStart = new Date(nowMs - (WEEKLY_BUCKET_COUNT - i) * 7 * dayMs);
+    const weekStart = new Date(startMs + i * 7 * dayMs);
     return {
       weekStart: weekStart.toISOString().slice(0, 10),
       receivedCumulative: cumReceived,
@@ -621,13 +622,14 @@ function overviewStats() {
     count: agingByBucket[bucket] || 0,
   }));
 
-  // Daily received vs. resolved for the last 30 days, zero-filled — raw
-  // intake alone doesn't say whether it's being kept up with; this pairs
-  // it against the day things actually got resolved.
+  // Daily received vs. resolved since TOTAL_SINCE, zero-filled — raw intake
+  // alone doesn't say whether it's being kept up with; this pairs it
+  // against the day things actually got resolved.
   const dailyReceivedByDate = Object.fromEntries(dailyReceivedRowsStmt.all().map((r) => [r.day, r.count]));
   const dailyResolvedByDate = Object.fromEntries(dailyResolvedRowsStmt.all().map((r) => [r.day, r.count]));
   const dailyFlow = [];
-  for (let i = 29; i >= 0; i -= 1) {
+  const dayCount = Math.max(1, Math.floor((Date.now() - new Date(TOTAL_SINCE).getTime()) / (24 * 60 * 60 * 1000)) + 1);
+  for (let i = dayCount - 1; i >= 0; i -= 1) {
     const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
     const key = d.toISOString().slice(0, 10);
     dailyFlow.push({

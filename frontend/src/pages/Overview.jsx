@@ -242,7 +242,7 @@ export default function Overview() {
         </div>
 
         <div className="panel">
-          <h3>Daily volume: received vs. resolved</h3>
+          <h3>Daily volume: received vs. resolved{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
           <DualTrendChart
             data={stats.dailyFlow}
             xKey="date"
@@ -253,7 +253,7 @@ export default function Overview() {
         </div>
 
         <div className="panel">
-          <h3>Weekly, accumulated (last 12 weeks)</h3>
+          <h3>Weekly, accumulated{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
           <DualTrendChart
             data={stats.weeklyFlow}
             xKey="weekStart"

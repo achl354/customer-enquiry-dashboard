@@ -14,7 +14,7 @@ export function BarList({ data, colorFor, linkTo }) {
   const max = Math.max(...data.map((d) => d.value), 1);
 
   return (
-    <div>
+    <div className="bar-list">
       {data.map((d) => {
         const rowContent = (
           <>

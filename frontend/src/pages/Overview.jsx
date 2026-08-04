@@ -143,7 +143,7 @@ export default function Overview() {
     : null;
 
   return (
-    <div>
+    <div className="overview-page">
       <div className="overview-header">
         <h2>Mailbox Overview</h2>
         {mailbox && (

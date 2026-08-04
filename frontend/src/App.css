@@ -288,6 +288,13 @@
      height it will still scroll — better than compressing further into
      illegibility. */
   padding: clamp(12px, 2vh, 28px) 40px;
+  /* Lets a page's own root element (e.g. .overview-page) stretch to fill
+     whatever height .main actually has (which itself stretches to at
+     least the viewport height via .app-shell's min-height:100vh) instead
+     of just sitting at its natural content height with empty space below
+     it on a tall screen. */
+  display: flex;
+  flex-direction: column;
 }
 
 .main h2 {
@@ -296,6 +303,18 @@
   letter-spacing: -0.01em;
   margin: 0;
   text-wrap: balance;
+}
+
+/* Fills .main's available height (flex:1 here, min-height auto so it
+   never shrinks below its own content — on a short viewport that just
+   means .main/the page grows taller and scrolls, same fallback as
+   before). Its two .chart-grid rows are the ones that actually grow
+   into any leftover space; everything above them (header, stat tiles,
+   oldest-enquiry banner) stays its natural size. */
+.overview-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
 }
 
 /* Keeps the title and mailbox address on one line where there's room;
@@ -568,6 +587,12 @@
      instead of always stacking into extra rows purely to fill height. */
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: clamp(8px, 1vh, 16px);
+  /* The two .chart-grid rows are .overview-page's flex-grow children —
+     they're what actually stretches to use a tall screen's extra height
+     (see .overview-page above), split evenly between them. Grid's own
+     default stretch then makes every panel in a row match that row's
+     new height. */
+  flex: 1 1 auto;
 }
 
 @media (max-width: 860px) {
@@ -594,6 +619,40 @@
   box-shadow: var(--card-shadow);
   padding: clamp(10px, 1.3vh, 18px);
   margin-bottom: clamp(8px, 1vh, 16px);
+  /* display:flex here is neutral by default (no child grows unless it
+     opts in via flex — see .bar-list/.trend-chart below), so this
+     doesn't change how the Detail page's panels lay out their own
+     content; it only enables Overview's chart panels to stretch a
+     child to fill a taller grid row (see .chart-grid's flex:1 above). */
+  display: flex;
+  flex-direction: column;
+}
+
+/* CSS Grid stretches every panel in a .chart-grid row to match that
+   row's height (see .chart-grid's flex:1 above) — these two make each
+   panel's actual content use that extra height rather than just leaving
+   blank space below it. */
+.panel .bar-list {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  /* Bar thickness stays capped (see .bar-fill) rather than stretching —
+     centering the whole block is what "uses" the extra height instead,
+     since actually stretching bars taller would just make them heavier,
+     not more informative. */
+  justify-content: center;
+}
+
+.panel .trend-chart {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel .trend-chart svg {
+  flex: 1;
+  height: auto;
+  min-height: 0;
 }
 
 /* Same reasoning as .stat-grid's max-width — a single line of text (the
@@ -1340,6 +1399,14 @@
 
 .page-transition {
   animation: pageFadeIn 0.28s ease both;
+  /* .main's actual flex child (see .main above) — without this, a page's
+     own flex:1 root (e.g. .overview-page) has nothing to grow into,
+     since this wrapper would otherwise just sit at its natural content
+     height instead of stretching to fill .main. */
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 @media (prefers-reduced-motion: reduce) {

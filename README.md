@@ -109,7 +109,8 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 | `GET /api/ingest/status` | Whether live Graph polling and AI classification are configured |
 | `POST /api/ingest/run` | Manually trigger one poll cycle (Inbox only) |
 | `GET /api/ingest/folder-map?mailbox=<address>` | CSV of every mail folder, walked by id — see "Folder tree enumeration" below |
-| `POST /api/ingest/backfill-all-folders?since=<date>` | One-off historical catch-up across every folder + full reassessment — see "Historical catch-up" below |
+| `POST /api/ingest/backfill-all-folders?since=<date>` | Starts the one-off historical catch-up across every folder + full reassessment; returns `202` immediately — see "Historical catch-up" below |
+| `GET /api/ingest/backfill-status` | Poll this for the backfill's progress/result — `{running, lastResult, lastFinishedAt}` |
 | `GET /api/ingest/folder-messages?since=<date>&mailbox=<address>` | Read-only streamed CSV audit export, ~32 active folders by default (`?allFolders=true` for all ~380) — see "Folder audit export" below |
 
 ## AI classification
@@ -502,13 +503,30 @@ to spam → `IGNORED`, unless already `DISMISSED`) — everything else about
 an enquiry's workflow state (`RESOLVED`, `IN_PROGRESS`,
 `WAITING_ON_CUSTOMER`, etc.) is the Outlook-sync's job, not this one's.
 
-**Can take a while.** Every step is a real, sequential network call — for
-a wide window or a busy mailbox this can run for many minutes. The work
-keeps running server-side to completion even if the HTTP response itself
-times out on a proxy in front of it; watch the server logs for
-`backfillAllFoldersAndReassess` progress lines (logged every 25
-reclassifications) rather than assuming a timed-out request means it
-stopped, then re-check the dashboard once it's done.
+**Fire-and-poll, not request/response.** Every step is a real, sequential
+network call — for a wide window or a busy mailbox this can run for many
+minutes, easily longer than a proxy in front of this app will hold one
+idle HTTP connection open. Waiting on that connection for the final result
+used to mean a perfectly successful run could still surface client-side as
+a bare network failure once the timeout hit, with no way to tell that
+apart from a real failure.
+
+So `POST /api/ingest/backfill-all-folders?since=<date>` returns `202
+{started: true}` immediately — it kicks the job off (deduped the same way
+as regular polling: a second POST while one's already running just returns
+`{started: false, running: true}` instead of starting a duplicate) and
+returns right away. Poll `GET /api/ingest/backfill-status` afterward:
+`{running: true}` while it's still going, and once `running` flips to
+`false`, `lastResult` holds the final `{fetched, ingested, failedIngest,
+reassessed, reclassified, failed}` summary (or `{error}` if the run failed
+outright). The server logs `backfillAllFoldersAndReassess` progress lines
+every 25 reclassifications too, if you'd rather watch those directly.
+
+A single bad message (a transient Graph hiccup, an unexpected shape) no
+longer aborts the whole run either — both the ingest loop and the
+reclassify loop catch per-item errors and keep going, counted in
+`failedIngest`/`failed` respectively, so one bad message can't silently
+skip everything after it.
 
 ## Folder audit export (`/folder-messages`)
 

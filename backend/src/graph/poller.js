@@ -177,6 +177,14 @@ function runPollOnce() {
 }
 
 let backfillInFlight = null;
+// Surfaced via getBackfillStatus() below so a caller can fire the job and
+// poll for completion instead of holding one HTTP connection open for the
+// whole run — a run over hundreds/thousands of messages can easily outlast
+// what a proxy in front of this app will keep an idle connection alive for,
+// which previously showed up client-side as a bare "failed to fetch" even
+// though the job itself ran to completion on the server regardless.
+let lastBackfillResult = null;
+let lastBackfillFinishedAt = null;
 
 /**
  * One-time historical catch-up, NOT part of regular polling — pulls mail
@@ -199,12 +207,22 @@ async function backfillAllFoldersAndReassess(sinceIso) {
   backfillInFlight = (async () => {
     const messages = await graphClient.fetchAllMailboxMessagesSince(sinceIso);
 
+    // Per-message try/catch, same as the reclassify loop below — one bad
+    // message (a transient Graph hiccup, an unexpected shape) previously
+    // threw straight out of this whole function and silently skipped every
+    // message after it, including the entire reclassify pass beneath it.
     let ingested = 0;
+    let failedIngest = 0;
     for (const raw of messages) {
-      const id = await repo.ingestEmail(raw);
-      if (id) ingested += 1;
+      try {
+        const id = await repo.ingestEmail(raw);
+        if (id) ingested += 1;
+      } catch (err) {
+        failedIngest += 1;
+        console.error('[graph-poller] backfillAllFoldersAndReassess: ingest failed for a message:', err.message);
+      }
     }
-    console.log(`[graph-poller] backfillAllFoldersAndReassess: ingested ${ingested}/${messages.length} new (rest already existed)`);
+    console.log(`[graph-poller] backfillAllFoldersAndReassess: ingested ${ingested}/${messages.length} new (rest already existed, ${failedIngest} failed)`);
 
     const candidates = repo.listEnquiriesReceivedSince(sinceIso);
     let reclassified = 0;
@@ -222,12 +240,31 @@ async function backfillAllFoldersAndReassess(sinceIso) {
       }
     }
 
-    return { fetched: messages.length, ingested, reassessed: candidates.length, reclassified, failed };
-  })().finally(() => {
-    backfillInFlight = null;
-  });
+    return { fetched: messages.length, ingested, failedIngest, reassessed: candidates.length, reclassified, failed };
+  })()
+    .then((result) => {
+      lastBackfillResult = { ...result, error: null };
+      return result;
+    })
+    .catch((err) => {
+      lastBackfillResult = { error: err.message };
+      throw err;
+    })
+    .finally(() => {
+      lastBackfillFinishedAt = new Date().toISOString();
+      backfillInFlight = null;
+    });
 
   return backfillInFlight;
+}
+
+/** Polled by GET /api/ingest/backfill-status — see the comment above backfillInFlight. */
+function getBackfillStatus() {
+  return {
+    running: backfillInFlight !== null,
+    lastResult: lastBackfillResult,
+    lastFinishedAt: lastBackfillFinishedAt,
+  };
 }
 
 /**
@@ -263,5 +300,6 @@ module.exports = {
   syncFlagStatuses,
   syncReplyStatuses,
   backfillAllFoldersAndReassess,
+  getBackfillStatus,
   startScheduledPolling,
 };

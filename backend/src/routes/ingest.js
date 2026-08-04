@@ -1,5 +1,5 @@
 const express = require('express');
-const { runPollOnce, backfillAllFoldersAndReassess, isGraphConfigured } = require('../graph/poller');
+const { runPollOnce, backfillAllFoldersAndReassess, getBackfillStatus, isGraphConfigured } = require('../graph/poller');
 const graphClient = require('../graph/client');
 const aiClassifier = require('../ai/classifier');
 const { csvField, toCsv } = require('../utils/csv');
@@ -178,24 +178,45 @@ router.post('/run', async (req, res) => {
 // call each, if configured), so this should only run when someone
 // actually triggers it, not automatically on every deploy/restart.
 //
-// Can take a long time for a wide window — every ingested/reclassified
-// enquiry is a real network call, done sequentially. The work itself
-// keeps running server-side to completion even if this HTTP response
-// times out on a proxy in front of it; check server logs for
-// backfillAllFoldersAndReassess's progress lines, then re-check the
-// dashboard, rather than assuming a timed-out request means it stopped.
+// Fires the job and responds immediately (202) rather than waiting for the
+// whole run to finish — a wide window over hundreds/thousands of messages,
+// each reclassified sequentially, can easily outlast what a proxy in front
+// of this app will hold one idle connection open for. Waiting on it here
+// previously meant a perfectly successful run could still show up
+// client-side as a bare "failed to fetch" once that timeout hit, with no
+// way to tell a real failure apart from a slow one. Poll GET
+// /backfill-status instead — see getBackfillStatus in graph/poller.js.
 router.post('/backfill-all-folders', async (req, res) => {
   if (!isGraphConfigured()) {
     return res.status(400).json({ error: 'Microsoft Graph is not configured. Set TENANT_ID, CLIENT_ID, CLIENT_SECRET, MAILBOX in .env' });
   }
   const { error, sinceIso } = parseSinceParam(req);
   if (error) return res.status(400).json({ error });
-  try {
-    const result = await backfillAllFoldersAndReassess(sinceIso);
-    res.json(result);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+
+  if (getBackfillStatus().running) {
+    return res.status(202).json({
+      started: false,
+      running: true,
+      message: 'A backfill is already running. Poll GET /api/ingest/backfill-status for progress.',
+    });
   }
+
+  backfillAllFoldersAndReassess(sinceIso).catch((err) => {
+    console.error('[ingest] backfill-all-folders: failed:', err.message);
+  });
+
+  res.status(202).json({
+    started: true,
+    message: 'Backfill started in the background. Poll GET /api/ingest/backfill-status for progress and the final result.',
+  });
+});
+
+// Poll this after POSTing /backfill-all-folders. `running: true` while it's
+// still going; once it flips to false, `lastResult` holds the final
+// {fetched, ingested, failedIngest, reassessed, reclassified, failed}
+// summary (or {error} if the run failed outright).
+router.get('/backfill-status', (req, res) => {
+  res.json(getBackfillStatus());
 });
 
 // Full audit pull, read-only — every message received on/after `since`,

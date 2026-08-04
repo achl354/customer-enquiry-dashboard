@@ -53,4 +53,15 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_enquiries_received_at ON enquiries(received_at);
 `);
 
+// One-time reclassification, not a schema change — REMOVED used to mean "the
+// message became unreachable via Graph," modeled as distinct from RESOLVED
+// since that was assumed to be unconfirmed evidence of being handled.
+// Confirmed directly with staff it isn't: in this mailbox, a message going
+// unreachable IS the resolution signal (archiving is what causes it — see
+// statusForMissingMessage in db/repository.js). Runs on every boot; a no-op
+// after the first time since nothing is ever written back to REMOVED again.
+db.prepare("UPDATE enquiries SET status = 'RESOLVED', updated_at = ? WHERE status = 'REMOVED'").run(
+  new Date().toISOString()
+);
+
 module.exports = db;

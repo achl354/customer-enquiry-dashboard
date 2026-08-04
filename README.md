@@ -285,10 +285,15 @@ in `db/repository.js`):
 
 - Category **"Resolved"** → dashboard status becomes `RESOLVED`, regardless
   of current status. Category **"No Action Needed"** → `IGNORED`, same way.
-  These are checked first and take precedence over everything below.
+  These are checked first and take precedence over everything below — e.g.
+  tagging "No Action Needed" and then archiving the message still resolves
+  to `IGNORED`, not `RESOLVED`, since the category check wins before the
+  folder-move check ever runs.
 - Moved out of the Inbox into **any** folder → `RESOLVED`. This is staff's
   actual confirmed habit (filing a message away once it's handled, e.g. into
-  a customer/PO folder) — checked next, ahead of the flag.
+  a customer/PO folder) — checked next, ahead of the flag. Tagging
+  "Resolved" and then archiving makes no practical difference: both
+  independently produce the same `RESOLVED` outcome.
 - Flag set to **Complete** → `RESOLVED` (same outcome, checked as a further
   fallback when neither of the above applies).
 - Flag set to **Flagged** (follow-up, not yet complete) → only advances a
@@ -338,28 +343,29 @@ Runs as part of every `runPollOnce()` alongside the flag sync, adding
 `conversationId` (seed data, or anything ingested before this feature
 existed) are skipped — nothing to check them against.
 
-## Status sync (message deleted from the mailbox)
+## Status sync (message no longer resolvable via Graph)
 
-The flag/category sync above depends on the source message still existing
-in the mailbox to look up. If it's gone — deleted, or moved somewhere its
-Graph ID no longer resolves (e.g. mailbox storage-quota cleanup) — that
-lookup 404s. Rather than leaving the enquiry stuck open forever with
-nothing left to ever check again, it moves to a dedicated `REMOVED` status
-(`statusForMissingMessage` in `db/repository.js`), checked only as a last
-resort after categories and the flag — either of those still wins if
-present.
+The flag/category/folder sync above depends on the source message still
+resolving by its Graph ID to look up. If it doesn't — a confirmed 404, not
+just "no flag/category data" — that's treated the same as a folder move:
+`RESOLVED` (`statusForMissingMessage` in `db/repository.js`), checked as a
+last resort after categories, the folder check, and the flag — any of
+those still wins if present. A 404 from something *other* than the message
+itself being gone (rate limiting, a transient error) is not treated this
+way — only a confirmed 404 on that specific message triggers it.
 
-**Deliberately not folded into `RESOLVED`.** Deletion isn't the same
-confirmation of being handled as an explicit category/flag — it's an
-inference, not a fact from staff. Even if mail is typically acted on before
-being cleared out, "the message disappeared" and "someone marked this done"
-are different signals, so `REMOVED` stays its own status: excluded from Open/Urgent counts and the
-queue like `RESOLVED`/`IGNORED` are, but visually distinct (a gold badge,
-"Removed from mailbox" — not the clean green of a genuine `RESOLVED`) so
-it's still auditable which of the two actually happened. A 404 from
-something *other* than the message itself being gone (rate limiting, a
-transient error) is not treated as removal — only a confirmed 404 on that
-specific message triggers this.
+**Why this folds into `RESOLVED` rather than staying its own status:**
+earlier versions of this app modeled "message gone entirely" as a separate
+`REMOVED` status, on the assumption that disappearing wasn't confirmed
+evidence of being handled the way an explicit category/flag/folder-move
+is. Confirmed directly with staff that assumption doesn't hold for this
+mailbox: a message going fully unreachable is what archiving looks like
+one step further along (e.g. moved into a personal archive outside what
+Graph can see), not evidence of something lost before being acted on. Any
+enquiry already sitting at the old `REMOVED` status gets reclassified to
+`RESOLVED` automatically on the next server start (a one-time, idempotent
+`UPDATE` in `db/index.js` — a no-op after the first run since nothing
+writes `REMOVED` anymore).
 
 ## Access control (Basic Auth)
 

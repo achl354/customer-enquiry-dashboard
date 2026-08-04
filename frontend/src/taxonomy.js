@@ -28,11 +28,6 @@ export const STATUS_LABELS = {
   WAITING_ON_CUSTOMER: 'Waiting on customer',
   RESOLVED: 'Resolved',
   IGNORED: 'Ignored',
-  // The source message was deleted/moved out of the mailbox (e.g. storage
-  // cleanup) before ever getting an explicit Resolved/No Action Needed
-  // category — kept distinct from Resolved since disappearing isn't the
-  // same confirmation of being handled.
-  REMOVED: 'Removed from mailbox',
   // Staff clicked "Delete" on the Detail page — a dashboard-only hide,
   // unlike every other status here which is inferred from Outlook.
   DISMISSED: 'Dismissed',

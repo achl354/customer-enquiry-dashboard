@@ -39,12 +39,17 @@ function statusForCategories(categories) {
 }
 
 // A confirmed 404 looking up the message itself (not just "no flag/category
-// data") means it's gone from the mailbox entirely — moved somewhere its ID
-// no longer resolves, or deleted. Distinct from RESOLVED (see CLOSED_STATUSES
-// above): this is an inference from disappearance, not an explicit "done"
-// from staff, so it stays visually and functionally separate.
+// data") means it's gone from the mailbox entirely — its Graph ID no longer
+// resolves anywhere. Originally treated as a separate, unconfirmed signal
+// (REMOVED) distinct from an explicit "done" — but confirmed directly with
+// staff that in this mailbox, archiving a resolved message is exactly what
+// makes it stop resolving via this lookup (see statusForFolderMove below for
+// the far more common case, a plain in-mailbox folder move that still
+// resolves fine). A message that's gone entirely is the same signal, just a
+// step further along, so it resolves the same way rather than needing its
+// own status.
 function statusForMissingMessage(confirmedMissing) {
-  return confirmedMissing ? 'REMOVED' : null;
+  return confirmedMissing ? 'RESOLVED' : null;
 }
 
 // Confirmed directly with staff: their actual "I'm done with this" habit is
@@ -55,7 +60,9 @@ function statusForMissingMessage(confirmedMissing) {
 // this, and that's fine, staff confirmed the simple rule over carving out
 // per-folder meaning). Takes priority over the flag heuristic since this is
 // the confirmed-real habit, not a maybe-used one — but stays below an
-// explicit category tag, which is a deliberate staff action either way.
+// explicit category tag: e.g. "No Action Needed" applied before archiving
+// should still resolve to IGNORED, not get overwritten to RESOLVED just
+// because the message also left the Inbox.
 function statusForFolderMove(movedOutOfInbox) {
   return movedOutOfInbox ? 'RESOLVED' : null;
 }
@@ -64,25 +71,19 @@ function statusForFolderMove(movedOutOfInbox) {
 // advance an enquiry forward, never undo a status staff already set
 // themselves — e.g. a stale/old reply shouldn't demote a RESOLVED enquiry
 // back to WAITING_ON_CUSTOMER.
-const STATUS_RANK = { NEW: 0, IN_PROGRESS: 1, WAITING_ON_CUSTOMER: 2, RESOLVED: 3, IGNORED: 3, REMOVED: 3, DISMISSED: 3 };
+const STATUS_RANK = { NEW: 0, IN_PROGRESS: 1, WAITING_ON_CUSTOMER: 2, RESOLVED: 3, IGNORED: 3, DISMISSED: 3 };
 
 // Terminal statuses — excluded from every "open enquiries" query below.
-// REMOVED means the message was deleted/purged from the mailbox (observed
-// cause: storage quota cleanup) before ever getting an explicit Resolved/No
-// Action Needed category — see statusForMissingMessage below. It's kept
-// distinct from RESOLVED rather than folded into it, since deletion doesn't
-// confirm the enquiry was actually handled, just that nothing further will
-// ever be seen for it.
 //
-// DISMISSED is the odd one out here: RESOLVED/IGNORED/REMOVED are all
-// inferred from something observed in Outlook (a flag, a category tag, the
-// message disappearing) — never set directly by this app. DISMISSED is the
-// opposite: it's ONLY ever set by staff clicking "Delete" on the Detail
-// page (see routes/enquiries.js), a dashboard-native "hide this from my
-// queue" with no Outlook-side signal behind it at all. Kept as its own
-// status rather than reusing IGNORED/REMOVED specifically so those two
-// keep meaning exactly what their sync logic says they mean.
-const CLOSED_STATUSES = ['RESOLVED', 'IGNORED', 'REMOVED', 'DISMISSED'];
+// DISMISSED is the odd one out here: RESOLVED/IGNORED are both inferred
+// from something observed in Outlook (a flag, a category tag, a folder
+// move) — never set directly by this app. DISMISSED is the opposite: it's
+// ONLY ever set by staff clicking "Delete" on the Detail page (see
+// routes/enquiries.js), a dashboard-native "hide this from my queue" with
+// no Outlook-side signal behind it at all. Kept as its own status rather
+// than reusing IGNORED so that one keeps meaning exactly what its sync
+// logic says it means.
+const CLOSED_STATUSES = ['RESOLVED', 'IGNORED', 'DISMISSED'];
 const CLOSED_STATUS_SQL = CLOSED_STATUSES.map((s) => `'${s}'`).join(', ');
 
 // A reply/forward was found in Sent Items for this enquiry's conversation.

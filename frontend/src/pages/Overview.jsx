@@ -15,17 +15,14 @@ import { useCountUp } from '../hooks/useCountUp';
 const STATS_REFRESH_MS = 60000;
 
 // WAITING_ON_CUSTOMER and IGNORED previously shared the same muted gray
-// (indistinguishable at a glance), and REMOVED used --accent-gold — a
-// token reserved elsewhere in this file for trend indicators only, never
-// a data series. series-7/series-5 are validated CVD-safe against their
-// neighbors here (see scripts/validate_palette.js in the dataviz skill).
+// (indistinguishable at a glance) — series-7 is validated CVD-safe against
+// its neighbors here (see scripts/validate_palette.js in the dataviz skill).
 const STATUS_COLORS = {
   NEW: 'var(--series-1)',
   IN_PROGRESS: 'var(--status-warning)',
   WAITING_ON_CUSTOMER: 'var(--series-7)',
   RESOLVED: 'var(--status-good)',
   IGNORED: 'var(--text-muted)',
-  REMOVED: 'var(--series-5)',
   // Staff-initiated "Delete" from the Detail page — see the DISMISSED
   // comment in backend/src/db/repository.js. series-4 validated CVD-safe
   // against every other color in this set.
@@ -63,7 +60,7 @@ function formatWeekStart(d) {
   return `Wk of ${new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
 }
 
-const STATUS_ORDER = ['NEW', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER', 'RESOLVED', 'IGNORED', 'REMOVED', 'DISMISSED'];
+const STATUS_ORDER = ['NEW', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER', 'RESOLVED', 'IGNORED', 'DISMISSED'];
 
 export default function Overview() {
   const [stats, setStats] = useState(null);

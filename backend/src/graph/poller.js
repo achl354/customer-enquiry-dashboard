@@ -23,20 +23,21 @@ function isGraphConfigured() {
  * follow-up flag, and category tags, and sync into the dashboard status.
  * Category wins first — a "Resolved" or "No Action Needed" category is an
  * explicit, unambiguous "I'm done with this," so it moves straight to
- * RESOLVED/IGNORED regardless of current status. Next, a move out of Inbox
- * (confirmed directly with staff as their actual filing habit — see
- * statusForFolderMove) also moves straight to RESOLVED. Falls back to the
- * flag if neither is set: 'complete' also moves straight to RESOLVED;
- * 'flagged' only advances a still-untouched NEW enquiry to IN_PROGRESS —
- * none of these ever downgrade a more specific status staff already have
- * (e.g. WAITING_ON_CUSTOMER).
+ * RESOLVED/IGNORED regardless of current status (e.g. "No Action Needed"
+ * applied before archiving still resolves to IGNORED, not RESOLVED, since
+ * this is checked before the folder-move signal below ever gets a look).
+ * Next, a move out of Inbox (confirmed directly with staff as their actual
+ * filing habit — see statusForFolderMove) moves straight to RESOLVED.
+ * Falls back to the flag if neither is set: 'complete' also moves straight
+ * to RESOLVED; 'flagged' only advances a still-untouched NEW enquiry to
+ * IN_PROGRESS — none of these ever downgrade a more specific status staff
+ * already have (e.g. WAITING_ON_CUSTOMER).
  *
- * If the message itself is confirmed gone (deleted, or its id no longer
- * resolves at all — see fetchMessageFlags), and none of the above already
- * resolved it, it moves to REMOVED rather than staying open forever with
- * nothing left to ever check again. Deliberately NOT folded into RESOLVED:
- * an unresolvable id isn't the same evidence of being handled as an
- * explicit category/flag/folder-move is.
+ * If the message itself is confirmed gone (its id no longer resolves at
+ * all via Graph — see fetchMessageFlags) and none of the above already
+ * resolved it, that's treated the same as a folder move: RESOLVED. In this
+ * mailbox a message going fully unreachable is what archiving looks like
+ * one step further along, not evidence of unconfirmed loss.
  */
 async function syncFlagStatuses() {
   const open = repo.listOpenEnquiriesForFlagSync();
@@ -52,7 +53,7 @@ async function syncFlagStatuses() {
       repo.statusForFolderMove(info?.movedOutOfInbox) ||
       repo.statusForFlag(info?.flagStatus) ||
       repo.statusForMissingMessage(info?.missing);
-    if (nextStatus === 'RESOLVED' || nextStatus === 'IGNORED' || nextStatus === 'REMOVED') {
+    if (nextStatus === 'RESOLVED' || nextStatus === 'IGNORED') {
       repo.updateEnquiry(enquiry.id, { status: nextStatus });
       updated += 1;
     } else if (nextStatus === 'IN_PROGRESS' && enquiry.status === 'NEW') {

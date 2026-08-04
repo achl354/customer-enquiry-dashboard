@@ -65,8 +65,8 @@ test('statusForReply: never downgrades a more advanced status', () => {
   assert.equal(statusForReply(false, 'WAITING_ON_CUSTOMER'), null);
 });
 
-test('statusForMissingMessage: a confirmed-missing message becomes REMOVED', () => {
-  assert.equal(statusForMissingMessage(true), 'REMOVED');
+test('statusForMissingMessage: a confirmed-missing message resolves', () => {
+  assert.equal(statusForMissingMessage(true), 'RESOLVED');
 });
 
 test('statusForMissingMessage: not confirmed missing is not a signal', () => {

@@ -1084,10 +1084,6 @@
 .badge.status-waiting_on_customer { color: var(--text-secondary); background: var(--gridline); }
 .badge.status-resolved { color: var(--success-text); background: color-mix(in srgb, var(--status-good) 14%, transparent); }
 .badge.status-ignored { color: var(--text-muted); background: var(--gridline); }
-/* Was --accent-gold, which index.css itself reserves for trend indicators
-   only, never a data series/status — same fix already applied to this
-   status's bar-chart color on Overview. */
-.badge.status-removed { color: var(--series-5); background: color-mix(in srgb, var(--series-5) 14%, transparent); }
 .badge.status-dismissed { color: var(--series-4); background: color-mix(in srgb, var(--series-4) 14%, transparent); }
 
 .category-pill {

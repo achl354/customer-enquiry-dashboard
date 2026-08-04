@@ -206,9 +206,9 @@ router.patch('/:id/category', (req, res) => {
 
 // "Delete" from the dashboard's perspective — see the DISMISSED comment in
 // db/repository.js for why this sets a dedicated status rather than
-// reusing RESOLVED/IGNORED/REMOVED (all three are Outlook-sync-only
-// elsewhere in this app). Not a real DELETE FROM — these are real customer
-// emails, so nothing here touches the row itself or the actual mailbox.
+// reusing RESOLVED/IGNORED (both are Outlook-sync-only elsewhere in this
+// app). Not a real DELETE FROM — these are real customer emails, so
+// nothing here touches the row itself or the actual mailbox.
 router.delete('/:id', (req, res) => {
   const existing = repo.getEnquiry(req.params.id);
   if (!existing) return res.status(404).json({ error: 'Enquiry not found' });

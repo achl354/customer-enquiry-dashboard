@@ -110,7 +110,7 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 | `POST /api/ingest/run` | Manually trigger one poll cycle (Inbox only) |
 | `GET /api/ingest/folder-map?mailbox=<address>` | CSV of every mail folder, walked by id — see "Folder tree enumeration" below |
 | `POST /api/ingest/backfill-all-folders?since=<date>` | One-off historical catch-up across every folder + full reassessment — see "Historical catch-up" below |
-| `GET /api/ingest/folder-messages?since=<date>&mailbox=<address>` | Read-only CSV audit export across every folder — see "Folder audit export" below |
+| `GET /api/ingest/folder-messages?since=<date>&mailbox=<address>` | Read-only streamed CSV audit export, ~32 active folders by default (`?allFolders=true` for all ~380) — see "Folder audit export" below |
 
 ## AI classification
 
@@ -514,14 +514,25 @@ stopped, then re-check the dashboard once it's done.
 
 `GET /api/ingest/folder-messages?since=<date>&mailbox=<address>` is a
 **read-only** counterpart to `/backfill-all-folders` — same idea (every
-message since a date, from every folder, not just Inbox), but it never
-touches this app's own database. It's a reporting export:
-`fetchAllFolderMessagesSince` in `graph/client.js` re-walks the folder tree
-fresh (`fetchFolderTree`), then queries each folder's `/messages` since
-that date, and the route returns the result as `messages_since_<date>.csv`
-— `folder_id`, `folder_path`, `subject`, `sender`, `recipients`,
+message since a date, not just Inbox), but it never touches this app's own
+database. It's a reporting export: `fetchAllFolderMessagesSince` in
+`graph/client.js` queries each target folder's `/messages` since that
+date, and the route streams the result as `messages_since_<date>.csv` —
+`folder_id`, `folder_path`, `subject`, `sender`, `recipients`,
 `receivedDateTime`, `lastModifiedDateTime`, `days_between_received_and_modified`,
 `hasAttachments`, `conversationId`, `internetMessageId`.
+
+**Scoped to the folders actually in use by default.** Of the ~380 folders
+in this mailbox, most are stale — old rep archives, one-off restores — and
+walking all of them sequentially is slow enough that early runs never
+finished downloading at all. `ACTIVE_FOLDER_NAMES` in `routes/ingest.js`
+(confirmed against the real folder map, matched by exact `displayName` —
+never a fresh Graph name lookup, which is the whole thing this feature
+exists to avoid) is the ~32-folder default scope, matching the Outlook
+mobile "Favorites" sidebar. Pass `?allFolders=true` for the full ~380-folder
+walk if you actually need it. Any name in `ACTIVE_FOLDER_NAMES` that no
+longer matches a real folder (renamed, deleted) is logged, not silently
+dropped.
 
 **The "resolve time" caveat — read this before trusting the numbers.**
 Graph has no field that records when a message was actually filed into a
@@ -539,15 +550,20 @@ much rawer, less-processed view across the whole mailbox.
 
 **Resilient to one bad folder.** A single folder erroring (a permissions
 quirk on a system folder, repeated 429s past the retry budget) is recorded
-and skipped, not fatal to the run — see the response's `X-Folders-Errored`
-header and the server logs for which ones and why. `X-Folders-Checked`,
-`X-Messages-Found`, `X-Oldest-Received`, and `X-Newest-Received` are also
-set on the response, since the body itself is the CSV file.
+and skipped, not fatal to the run.
 
-Same long-running caveat as `/backfill-all-folders` — ~380 folders,
-sequential, real network calls each — expect several minutes, and check
-server logs (`fetchAllFolderMessagesSince` logs progress every 25 folders)
-rather than assuming a timed-out response means it stopped.
+**Streamed, not buffered.** Rows are written to the response as each
+folder completes, not accumulated until the whole walk finishes — a
+multi-minute buffered response risks a proxy's idle/request timeout
+killing the connection before anything reaches the client at all, which
+was the actual cause of downloads that never completed. Because of this,
+only `X-Folders-Checked` is set as a response header (known upfront, from
+the folder count); `messagesFound`/`foldersErrored`/oldest/newest received
+aren't known until the walk finishes, so those are logged to the server
+console instead of set as headers. With the default ~32-folder scope this
+should complete in well under a minute; `?allFolders=true` brings back the
+original several-minutes-for-~380-folders caveat — check server logs for
+progress there rather than assuming a timed-out response means it stopped.
 
 ## Access control (Basic Auth)
 

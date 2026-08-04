@@ -288,8 +288,8 @@ async function fetchFolderTree(mailboxEmail) {
  * Full audit pull: every message received on/after `sinceIso`, from EVERY
  * folder in the mailbox (not just leaves — a parent folder can hold
  * messages directly too), attributed with the folder it was found in.
- * Calls fetchFolderTree fresh at the start so folder_path is always
- * consistent with the current tree, then queries
+ * Fetches the folder tree fresh (unless `folders` is supplied — see below)
+ * so folder_path is always consistent with the current tree, then queries
  * /mailFolders/{id}/messages?$filter=receivedDateTime ge {sinceIso} for
  * each folder in turn, paginating fully via @odata.nextLink.
  *
@@ -309,35 +309,47 @@ async function fetchFolderTree(mailboxEmail) {
  * output — this function itself makes no claim about what the timestamp
  * means beyond what Graph documents.
  */
-async function fetchAllFolderMessagesSince(mailboxEmail, sinceIso) {
+// `folders` lets the caller pass an already-fetched tree (see
+// routes/ingest.js — it fetches this upfront to set an X-Folders-Checked
+// response header before streaming starts, so re-fetching it here would
+// be a wasted duplicate walk); omit it to have this fetch its own.
+// `onFolderMessages(folderMessages, folder)` fires once per folder, right
+// after that folder's messages are fully paginated — the caller uses this
+// to stream CSV rows to the HTTP response as they're found instead of
+// buffering the entire ~380-folder walk (which can take many minutes)
+// before sending anything. A proxy's idle/request timeout killing a
+// several-minutes-silent connection was the actual cause of "the file
+// never finishes downloading" — streaming keeps the connection active
+// throughout instead.
+async function fetchAllFolderMessagesSince(mailboxEmail, sinceIso, { folders, onFolderMessages } = {}) {
   const token = await getAccessToken();
   const mailbox = encodeURIComponent(mailboxEmail);
-  const folders = await fetchFolderTree(mailboxEmail);
+  const resolvedFolders = folders || (await fetchFolderTree(mailboxEmail));
   const select = '$select=id,internetMessageId,subject,receivedDateTime,lastModifiedDateTime,from,toRecipients,ccRecipients,hasAttachments,conversationId';
 
   const messages = [];
   const folderErrors = [];
 
-  for (let i = 0; i < folders.length; i += 1) {
-    const folder = folders[i];
+  for (let i = 0; i < resolvedFolders.length; i += 1) {
+    const folder = resolvedFolders[i];
     await sleep(FOLDER_WALK_DELAY_MS);
     if ((i + 1) % 25 === 0) {
-      console.log(`[graph-client] fetchAllFolderMessagesSince: checked ${i + 1}/${folders.length} folders, ${messages.length} messages so far`);
+      console.log(`[graph-client] fetchAllFolderMessagesSince: checked ${i + 1}/${resolvedFolders.length} folders, ${messages.length} messages so far`);
     }
     // $orderby=receivedDateTime alongside the matching $filter, same as
     // every other date-filtered query in this file (fetchMessagesSince,
     // fetchAllMailboxMessagesSince) — Graph's $filter on a date field
     // without a same-property $orderby is a known source of unreliable
-    // results. This was missing here originally; fixed after the real
-    // mailbox came back with fewer messages than expected.
+    // results.
     let url = `${GRAPH_BASE}/users/${mailbox}/mailFolders/${folder.id}/messages?${select}&$filter=receivedDateTime ge ${sinceIso}&$orderby=receivedDateTime desc&$top=999`;
     let pageCount = 0;
+    const folderMessages = [];
     try {
       while (url && pageCount < MAX_FOLDER_MESSAGE_PAGES) {
         const res = await fetchWithBackoff(url, token);
         const data = await res.json();
         for (const msg of data.value || []) {
-          messages.push({
+          folderMessages.push({
             folderId: folder.id,
             folderPath: folder.fullPath,
             subject: msg.subject || '',
@@ -365,9 +377,11 @@ async function fetchAllFolderMessagesSince(mailboxEmail, sinceIso) {
       folderErrors.push({ folderId: folder.id, folderPath: folder.fullPath, error: err.message });
       console.error(`[graph-client] fetchAllFolderMessagesSince: folder "${folder.fullPath}" failed, skipping it:`, err.message);
     }
+    messages.push(...folderMessages);
+    if (onFolderMessages && folderMessages.length > 0) onFolderMessages(folderMessages, folder);
   }
 
-  return { messages, folderErrors, foldersChecked: folders.length };
+  return { messages, folderErrors, foldersChecked: resolvedFolders.length };
 }
 
 function chunk(arr, size) {

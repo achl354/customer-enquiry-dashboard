@@ -200,12 +200,22 @@ let lastBackfillFinishedAt = null;
  * configured), and re-running it against mail already correctly
  * categorized has no benefit — this should only run when someone actually
  * has a reason to (see the readme section on this).
+ *
+ * `untilIso` is an optional, exclusive upper bound — pass it to re-check a
+ * specific bounded window (e.g. a date range an earlier run is suspected
+ * to have missed) instead of re-pulling everything since `sinceIso` all
+ * the way through today. Note the in-flight guard below is a single slot
+ * keyed on nothing, not per-args — a second call with a different
+ * sinceIso/untilIso while one's already running gets back the *first*
+ * call's promise/result, not its own. Fine for this app's actual usage
+ * (one operator manually triggering one backfill at a time), but worth
+ * knowing if that ever stops being true.
  */
-async function backfillAllFoldersAndReassess(sinceIso) {
+async function backfillAllFoldersAndReassess(sinceIso, untilIso) {
   if (backfillInFlight) return backfillInFlight;
 
   backfillInFlight = (async () => {
-    const messages = await graphClient.fetchAllMailboxMessagesSince(sinceIso);
+    const messages = await graphClient.fetchAllMailboxMessagesSince(sinceIso, untilIso);
 
     // Per-message try/catch, same as the reclassify loop below — one bad
     // message (a transient Graph hiccup, an unexpected shape) previously
@@ -224,7 +234,7 @@ async function backfillAllFoldersAndReassess(sinceIso) {
     }
     console.log(`[graph-poller] backfillAllFoldersAndReassess: ingested ${ingested}/${messages.length} new (rest already existed, ${failedIngest} failed)`);
 
-    const candidates = repo.listEnquiriesReceivedSince(sinceIso);
+    const candidates = repo.listEnquiriesReceivedSince(sinceIso, untilIso);
     let reclassified = 0;
     let failed = 0;
     for (const row of candidates) {

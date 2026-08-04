@@ -69,19 +69,28 @@ const TREND_GRANULARITIES = [
 ];
 
 // Period strings come straight from the backend's SQL grouping (see
-// resolutionTimeTrend in db/repository.js): "2026-07" for month, "2026-Q3"
-// for quarter, "2026" for year — reformatted here for display only, never
-// used for sorting/comparison (the backend already returns them in order).
+// resolutionTimeTrend in db/repository.js): "2026-07" for month (calendar),
+// "2026-FQ1" for quarter, "2026" for year — the latter two are fiscal, not
+// calendar (FY starts 1 Jul; "2026" means the FY starting Jul 2026 and
+// ending Jun 2027, so it's shown as "FY26–27" rather than the bare year,
+// which would otherwise read as calendar 2026). Reformatted here for
+// display only, never used for sorting/comparison (the backend already
+// returns them in fiscal order).
+function fiscalYearLabel(startYear) {
+  const endYearShort = String(Number(startYear) + 1).slice(-2);
+  return `FY${String(startYear).slice(-2)}–${endYearShort}`;
+}
+
 function formatTrendPeriod(period, granularity) {
   if (granularity === 'month') {
     const [y, m] = period.split('-');
     return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
   }
   if (granularity === 'quarter') {
-    const [y, q] = period.split('-');
-    return `${q} ${y}`;
+    const [startYear, q] = period.split('-FQ');
+    return `Q${q} ${fiscalYearLabel(startYear)}`;
   }
-  return period;
+  return fiscalYearLabel(period);
 }
 
 export default function Overview() {
@@ -321,6 +330,9 @@ export default function Overview() {
             ))}
           </div>
         </div>
+        {trendGranularity !== 'month' && (
+          <p className="draft-hint" style={{ marginTop: 0, marginBottom: 10 }}>Financial year — 1 Jul to 30 Jun.</p>
+        )}
         {resolutionTrendError ? (
           <p className="draft-hint" style={{ margin: 0 }}>Failed to load: {resolutionTrendError}</p>
         ) : resolutionTrend === null ? (

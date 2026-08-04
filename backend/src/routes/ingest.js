@@ -112,6 +112,19 @@ function parseSinceParam(req) {
   return { sinceIso: new Date(since).toISOString(), sinceRaw: since };
 }
 
+// Optional companion to parseSinceParam — an exclusive upper bound for
+// re-checking a specific bounded window rather than "since X through right
+// now." Returns { error }, {} (no "until" passed — the normal open-ended
+// case), or { untilIso }, never more than one of those.
+function parseUntilParam(req) {
+  const until = req.query.until || req.body?.until;
+  if (!until) return {};
+  if (Number.isNaN(new Date(until).getTime())) {
+    return { error: `"until" is not a valid date: ${until}` };
+  }
+  return { untilIso: new Date(until).toISOString(), untilRaw: until };
+}
+
 // Strips accidental leading/trailing quote characters — an email address
 // never legitimately contains one, but MAILBOX is easy to enter with
 // quotes by habit in a hosting dashboard's raw env var field (unlike a
@@ -186,12 +199,19 @@ router.post('/run', async (req, res) => {
 // client-side as a bare "failed to fetch" once that timeout hit, with no
 // way to tell a real failure apart from a slow one. Poll GET
 // /backfill-status instead — see getBackfillStatus in graph/poller.js.
+// `until` is optional — an exclusive upper bound for re-checking a specific
+// bounded window (e.g. ?since=2026-07-01&until=2026-07-14 for just 1-13
+// Jul inclusive) instead of pulling everything since `since` through right
+// now. Useful for topping up a gap in a specific range without re-spending
+// AI classification calls on mail outside it that's already correct.
 router.post('/backfill-all-folders', async (req, res) => {
   if (!isGraphConfigured()) {
     return res.status(400).json({ error: 'Microsoft Graph is not configured. Set TENANT_ID, CLIENT_ID, CLIENT_SECRET, MAILBOX in .env' });
   }
   const { error, sinceIso } = parseSinceParam(req);
   if (error) return res.status(400).json({ error });
+  const { error: untilError, untilIso } = parseUntilParam(req);
+  if (untilError) return res.status(400).json({ error: untilError });
 
   if (getBackfillStatus().running) {
     return res.status(202).json({
@@ -201,7 +221,7 @@ router.post('/backfill-all-folders', async (req, res) => {
     });
   }
 
-  backfillAllFoldersAndReassess(sinceIso).catch((err) => {
+  backfillAllFoldersAndReassess(sinceIso, untilIso).catch((err) => {
     console.error('[ingest] backfill-all-folders: failed:', err.message);
   });
 

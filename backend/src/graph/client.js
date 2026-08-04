@@ -178,14 +178,22 @@ function toRawEmail(msg) {
  * fetchMessagesSince) so ingestEmail can set the correct status/resolved_at
  * immediately for mail that's already sitting outside Inbox, instead of
  * waiting a full poll cycle for syncFlagStatuses to notice it.
+ *
+ * `untilIso` is an optional, exclusive upper bound — pass it to backfill a
+ * specific bounded window (e.g. re-checking a range where an earlier run
+ * left a gap) instead of "since X through right now." Omit it for the
+ * normal open-ended catch-up.
  */
-async function fetchAllMailboxMessagesSince(sinceIso) {
+async function fetchAllMailboxMessagesSince(sinceIso, untilIso) {
   const token = await getAccessToken();
   const mailbox = encodeURIComponent(process.env.MAILBOX);
   const inboxFolderId = await getInboxFolderId();
   const select =
     '$select=id,internetMessageId,subject,bodyPreview,receivedDateTime,from,toRecipients,hasAttachments,importance,webLink,flag,conversationId,categories,parentFolderId,lastModifiedDateTime';
-  let url = `${GRAPH_BASE}/users/${mailbox}/messages?${select}&$filter=receivedDateTime ge ${sinceIso}&$orderby=receivedDateTime desc&$top=${PAGE_SIZE}`;
+  const filter = untilIso
+    ? `receivedDateTime ge ${sinceIso} and receivedDateTime lt ${untilIso}`
+    : `receivedDateTime ge ${sinceIso}`;
+  let url = `${GRAPH_BASE}/users/${mailbox}/messages?${select}&$filter=${filter}&$orderby=receivedDateTime desc&$top=${PAGE_SIZE}`;
 
   const messages = [];
   let pageCount = 0;

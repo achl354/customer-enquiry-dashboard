@@ -406,8 +406,13 @@ function listResolvedEnquiriesMissingResolvedAt() {
 // For the /backfill-all-folders reassess pass (see graph/poller.js) — every
 // enquiry received on/after a given date, regardless of current category or
 // classifiedBy. Returns full rows (not a projection) since reclassifyEnquiry
-// needs everything classifyEmail() looks at.
-function listEnquiriesReceivedSince(sinceIso) {
+// needs everything classifyEmail() looks at. `untilIso` is an optional,
+// exclusive upper bound for reassessing a specific bounded window rather
+// than everything since `sinceIso` through today.
+function listEnquiriesReceivedSince(sinceIso, untilIso) {
+  if (untilIso) {
+    return db.prepare('SELECT * FROM enquiries WHERE received_at >= ? AND received_at < ?').all(sinceIso, untilIso);
+  }
   return db.prepare('SELECT * FROM enquiries WHERE received_at >= ?').all(sinceIso);
 }
 
@@ -527,15 +532,28 @@ const resolutionStatsStmt = db.prepare(
   "SELECT AVG((julianday(resolved_at) - julianday(received_at)) * 24) as avgHours, COUNT(*) as count FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL"
 );
 
+// Fiscal year starting 1 July (the AU financial year, not the calendar
+// year) — FQ1 = Jul-Sep, FQ2 = Oct-Dec, FQ3 = Jan-Mar, FQ4 = Apr-Jun.
+// FISCAL_YEAR_START_EXPR is the calendar year the fiscal year *begins* in
+// (e.g. 2026 for the FY running 1 Jul 2026 - 30 Jun 2027) — Jan-Jun dates
+// belong to the fiscal year that started the previous calendar year, hence
+// the -1. FISCAL_QUARTER_EXPR shifts the month by 5 before the /3 divide so
+// July (month 7) lands in bucket 1 instead of calendar-quarter 3.
+const FISCAL_YEAR_START_EXPR =
+  "(CASE WHEN CAST(strftime('%m', resolved_at) AS INTEGER) >= 7 THEN CAST(strftime('%Y', resolved_at) AS INTEGER) ELSE CAST(strftime('%Y', resolved_at) AS INTEGER) - 1 END)";
+const FISCAL_QUARTER_EXPR = "(((CAST(strftime('%m', resolved_at) AS INTEGER) + 5) % 12) / 3 + 1)";
+
 // KPI rollup for the resolution-time trend panel — one prepared statement
-// per granularity (SQLite has no native quarter grouping, so that one is
-// built from year + a computed 3-month bucket). All-time, same as
+// per granularity (SQLite has no native quarter/fiscal-year grouping, so
+// those are built from the expressions above). All-time, same as
 // resolutionStatsStmt above and for the same reason: this is a process
 // metric (how fast are we resolving things), not a volume figure, so it
 // isn't scoped to TOTAL_SINCE — resolved_at IS NOT NULL already excludes
 // rows with no reliable timing data (pre-resolved_at, or confirmed-missing
 // messages with nothing left to ask Graph about).
 const RESOLUTION_TREND_STMTS = {
+  // Calendar month, not fiscal — a month label ("Jul 2026") is unambiguous
+  // either way, so there's nothing for the fiscal-year framing to change here.
   month: db.prepare(
     `SELECT strftime('%Y-%m', resolved_at) as period,
             AVG((julianday(resolved_at) - julianday(received_at)) * 24) as avgHours,
@@ -544,14 +562,16 @@ const RESOLUTION_TREND_STMTS = {
      GROUP BY period ORDER BY period ASC`
   ),
   quarter: db.prepare(
-    `SELECT strftime('%Y', resolved_at) || '-Q' || ((CAST(strftime('%m', resolved_at) AS INTEGER) - 1) / 3 + 1) as period,
+    `SELECT CAST(${FISCAL_YEAR_START_EXPR} AS TEXT) || '-FQ' || ${FISCAL_QUARTER_EXPR} as period,
             AVG((julianday(resolved_at) - julianday(received_at)) * 24) as avgHours,
             COUNT(*) as count
      FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL
      GROUP BY period ORDER BY period ASC`
   ),
+  // period is the fiscal year's start year (e.g. "2026" = FY 1 Jul 2026 -
+  // 30 Jun 2027) — formatted for display in Overview.jsx's formatTrendPeriod.
   year: db.prepare(
-    `SELECT strftime('%Y', resolved_at) as period,
+    `SELECT CAST(${FISCAL_YEAR_START_EXPR} AS TEXT) as period,
             AVG((julianday(resolved_at) - julianday(received_at)) * 24) as avgHours,
             COUNT(*) as count
      FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL

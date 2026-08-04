@@ -110,7 +110,7 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 | `GET /api/ingest/status` | Whether live Graph polling and AI classification are configured |
 | `POST /api/ingest/run` | Manually trigger one poll cycle (Inbox only) |
 | `GET /api/ingest/folder-map?mailbox=<address>` | CSV of every mail folder, walked by id — see "Folder tree enumeration" below |
-| `POST /api/ingest/backfill-all-folders?since=<date>` | Starts the one-off historical catch-up across every folder + full reassessment; returns `202` immediately — see "Historical catch-up" below |
+| `POST /api/ingest/backfill-all-folders?since=<date>&until=<date>` | Starts the one-off historical catch-up across every folder + full reassessment; `until` (exclusive) is optional, for bounding to a specific window; returns `202` immediately — see "Historical catch-up" below |
 | `GET /api/ingest/backfill-status` | Poll this for the backfill's progress/result — `{running, lastResult, lastFinishedAt}` |
 | `GET /api/ingest/folder-messages?since=<date>&mailbox=<address>` | Read-only streamed CSV audit export, ~32 active folders by default (`?allFolders=true` for all ~380) — see "Folder audit export" below |
 
@@ -444,7 +444,12 @@ a bar per period). Returns `[{period, avgHours, count}]`, one row per
 period that has at least one `RESOLVED` row with a known `resolved_at`;
 periods with none simply don't appear (no zero-filling — unlike the daily
 chart, a KPI trend has no fixed window to fill gaps in). `period` is
-`"YYYY-MM"` for month, `"YYYY-Qn"` for quarter, `"YYYY"` for year.
+`"YYYY-MM"` for month (calendar). Quarter and year are **fiscal** (the AU
+financial year, 1 Jul – 30 Jun), not calendar — `period` is `"YYYY-FQn"`
+for quarter and `"YYYY"` for year, where `YYYY` is the calendar year the
+fiscal year *starts* in (e.g. `"2026"` = FY 1 Jul 2026 – 30 Jun 2027, shown
+in the UI as "FY26–27"). FQ1 = Jul-Sep, FQ2 = Oct-Dec, FQ3 = Jan-Mar, FQ4 =
+Apr-Jun.
 
 All-time by design, same as the "Avg. resolution time" tile it extends —
 this is a process metric (how fast are things getting resolved), not a
@@ -492,7 +497,12 @@ ingesting anything* is invisible to normal polling no matter how long it
 runs — it's sitting in a folder it never looks at.
 
 `POST /api/ingest/backfill-all-folders?since=<date>` (`backfillAllFoldersAndReassess`
-in `graph/poller.js`) is the one-off catch-up for that. It:
+in `graph/poller.js`) is the one-off catch-up for that. Add `&until=<date>`
+(exclusive) to bound it to a specific window instead of pulling everything
+since `since` through right now — e.g. `?since=2026-07-01&until=2026-07-14`
+re-checks just 1-13 Jul inclusive, useful for topping up a range a previous
+run is suspected to have missed without re-spending AI classification
+calls on mail outside it that's already correct. It:
 
 1. Calls `fetchAllMailboxMessagesSince` — `/users/{mailbox}/messages` with
    no folder path segment, which searches every folder, not just Inbox —

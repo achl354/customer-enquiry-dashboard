@@ -210,7 +210,16 @@ async function classify(email, model = MODEL) {
     extractedFields: {
       poNumber: parsed.extractedFields.poNumber,
       quoteNumber: parsed.extractedFields.quoteNumber,
-      facility: isInternalSender ? null : parsed.extractedFields.facility || orgNameForDomain(senderDomain),
+      // Claude reads the actual body/subject, so it can correctly name an
+      // external facility even when the sender is internal (a staff member
+      // forwarding a customer's PO chase-up, an internal accounts
+      // notification about a specific hospital's invoice) — that's real
+      // extraction work, not a guess, and shouldn't be thrown away. Only
+      // the *domain-derived* fallback is unsafe for an internal sender
+      // (orgNameForDomain(senderDomain) would title-case our own domain
+      // into "Jdhealthcare" and label it as the customer), so that fallback
+      // alone stays gated on isInternalSender — the AI's own finding never is.
+      facility: parsed.extractedFields.facility || (isInternalSender ? null : orgNameForDomain(senderDomain)),
       senderDomain,
       cityTag: parsed.extractedFields.cityTag,
     },

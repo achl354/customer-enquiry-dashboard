@@ -280,7 +280,7 @@ export default function Overview() {
         </div>
 
         <div className="panel">
-          <h3>Top facilities / organisations</h3>
+          <h3>Top facilities / organisations{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
           {facilityData.length > 0 ? (
             <BarList data={facilityData} />
           ) : (

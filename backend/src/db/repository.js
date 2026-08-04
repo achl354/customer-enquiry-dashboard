@@ -510,8 +510,19 @@ const lowConfidenceCountStmt = db.prepare(
 const resolutionStatsStmt = db.prepare(
   "SELECT AVG((julianday(resolved_at) - julianday(received_at)) * 24) as avgHours, COUNT(*) as count FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL"
 );
+// Scoped to TOTAL_SINCE, same as the "Total enquiries" stat this chart sits
+// next to — querying all-time here (as this used to) mixes in pre-tracking
+// seed/backfill data "Total enquiries" deliberately excludes, so the two
+// numbers were counting different things and could never have added up.
 const byFacilityStmt = db.prepare(
-  "SELECT facility, COUNT(*) as count FROM enquiries WHERE facility IS NOT NULL AND facility != '' GROUP BY facility ORDER BY count DESC LIMIT 10"
+  `SELECT facility, COUNT(*) as count FROM enquiries WHERE facility IS NOT NULL AND facility != '' AND received_at >= '${TOTAL_SINCE}' GROUP BY facility ORDER BY count DESC LIMIT 10`
+);
+// Also scoped to TOTAL_SINCE — pairs with byFacilityStmt (top 10 only) so
+// overviewStats can add "Other facilities" / "Not attributed" rows below,
+// making the bars sum to the same total the stat tile shows instead of
+// silently dropping anything past #10 or with no facility extracted at all.
+const facilityAttributedCountStmt = db.prepare(
+  `SELECT COUNT(*) as c FROM enquiries WHERE facility IS NOT NULL AND facility != '' AND received_at >= '${TOTAL_SINCE}'`
 );
 const agingRowsStmt = db.prepare(
   `SELECT
@@ -610,7 +621,17 @@ function overviewStats() {
 
   // Top facilities/organisations by volume — nothing in the UI previously
   // surfaced which customers actually generate the most enquiries.
-  const byFacility = byFacilityStmt.all();
+  // Top 10 by name, plus "Other facilities" (past #10, still attributed)
+  // and "Not attributed" (no facility extracted at all) so the bars always
+  // sum to `total` — otherwise both groups just vanish from the chart with
+  // no indication anything was left out.
+  const byFacilityTop = byFacilityStmt.all();
+  const facilityAttributedCount = facilityAttributedCountStmt.get().c;
+  const byFacility = byFacilityTop.map((r) => ({ facility: r.facility, count: r.count }));
+  const otherFacilityCount = facilityAttributedCount - byFacilityTop.reduce((sum, r) => sum + r.count, 0);
+  if (otherFacilityCount > 0) byFacility.push({ facility: 'Other facilities', count: otherFacilityCount });
+  const notAttributedCount = total - facilityAttributedCount;
+  if (notAttributedCount > 0) byFacility.push({ facility: 'Not attributed', count: notAttributedCount });
 
   // Aging distribution of open enquiries. A single "oldest open" item
   // doesn't show how many are piling up — this does, in the same buckets

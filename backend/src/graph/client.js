@@ -154,12 +154,12 @@ async function getInboxFolderId() {
 }
 
 /**
- * Fetch the current Outlook follow-up flag, category tags, AND folder
- * location for a set of messages (by Graph message id), via the $batch
- * endpoint. The follow-up flag was the original plan for detecting "done",
- * but checking real Sent Items showed it's barely used in practice —
- * genuinely-handled threads routinely have no flag, or one left at
- * 'flagged' rather than 'complete'. Categories are a separate,
+ * Fetch the current Outlook follow-up flag, category tags, folder
+ * location, AND last-modified time for a set of messages (by Graph message
+ * id), via the $batch endpoint. The follow-up flag was the original plan
+ * for detecting "done", but checking real Sent Items showed it's barely
+ * used in practice — genuinely-handled threads routinely have no flag, or
+ * one left at 'flagged' rather than 'complete'. Categories are a separate,
  * currently-unused Outlook feature in this mailbox, so they're a cleaner
  * channel for an explicit "Resolved"/"No Action Needed" tag — but staff's
  * actual habit (confirmed directly) is simpler still: file the message
@@ -167,8 +167,8 @@ async function getInboxFolderId() {
  * longer matching the Inbox) captures that directly rather than depending
  * on a flag/category habit the team doesn't really have.
  *
- * Returns a Map of messageId -> { flagStatus, categories, movedOutOfInbox }
- * on success, or { missing: true } for a confirmed 404 (message deleted,
+ * Returns a Map of messageId -> { flagStatus, categories, movedOutOfInbox,
+ * lastModifiedDateTime } on success, or { missing: true } for a confirmed 404 (message deleted,
  * or moved somewhere its ID no longer resolves at all — observed cause in
  * this mailbox: storage-quota cleanup deleting mail after it's been acted
  * on, not before). That's a different thing from movedOutOfInbox — a
@@ -199,7 +199,7 @@ async function fetchMessageFlags(messageIds) {
         requests: batch.map((id, i) => ({
           id: String(i),
           method: 'GET',
-          url: `/users/${mailbox}/messages/${encodeURIComponent(id)}?$select=flag,categories,parentFolderId`,
+          url: `/users/${mailbox}/messages/${encodeURIComponent(id)}?$select=flag,categories,parentFolderId,lastModifiedDateTime`,
         })),
       };
       const res = await fetch(GRAPH_BATCH_URL, {
@@ -219,6 +219,15 @@ async function fetchMessageFlags(messageIds) {
             flagStatus: r.body?.flag?.flagStatus || null,
             categories: r.body?.categories || [],
             movedOutOfInbox: r.body?.parentFolderId !== inboxFolderId,
+            // Exchange bumps this on a folder move the same as any other
+            // property change, so it doubles as "when did this actually get
+            // archived" — a real historical timestamp, not "whenever our
+            // poller happened to check." Used for resolved_at in
+            // db/repository.js instead of relying on our own updated_at,
+            // which bumps on anything (a draft regenerated, a manual
+            // category fix) and would silently corrupt the resolution-time
+            // stat otherwise.
+            lastModifiedDateTime: r.body?.lastModifiedDateTime || null,
           });
         } else if (r.status === 404) {
           results.set(originalId, { missing: true });

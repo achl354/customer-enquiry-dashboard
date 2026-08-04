@@ -317,6 +317,7 @@ const UPDATE_COLUMNS = {
   category: 'category',
   classifiedBy: 'classified_by',
   confidence: 'confidence',
+  resolvedAt: 'resolved_at',
 };
 
 function updateEnquiry(id, updates) {
@@ -367,6 +368,21 @@ function listOpenEnquiriesForReplySync() {
     }));
 }
 
+// RESOLVED rows that predate resolved_at existing, or that resolved_at
+// backfill hasn't successfully reached yet — see backfillResolvedAt in
+// poller.js, which re-queries Graph for each one's lastModifiedDateTime.
+// Bounded, not growing: once resolved_at is set going forward (on the same
+// sync that resolves an enquiry), only this historical backlog remains,
+// and it only shrinks as backfill succeeds.
+function listResolvedEnquiriesMissingResolvedAt() {
+  return db
+    .prepare(
+      `SELECT id, graph_message_id FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NULL AND graph_message_id IS NOT NULL`
+    )
+    .all()
+    .map((r) => ({ id: r.id, graphMessageId: r.graph_message_id }));
+}
+
 // overviewStats() runs on every dashboard load/poll of /api/stats/overview,
 // so — unlike one-off calls elsewhere — its statements are worth preparing
 // once at module load rather than re-parsing the same SQL text on every
@@ -399,8 +415,18 @@ const lowConfidenceCountStmt = db.prepare(
 // AVG()/COUNT() in SQL instead of pulling every RESOLVED row into Node just
 // to reduce it to two numbers — this cost was growing unbounded as RESOLVED
 // enquiries accumulate over the dashboard's lifetime.
+//
+// resolved_at, not updated_at — updated_at bumps on ANY field change (a
+// draft regenerated, a manual category fix long after the fact), so it
+// can't be trusted as "when did this actually become resolved." resolved_at
+// is set once, from Graph's own lastModifiedDateTime at the moment the
+// folder-move/category/flag sync resolves it (see poller.js) — a real
+// historical timestamp. Rows without one yet (not resolved via this path,
+// or the source message is confirmed gone with nothing left to ask Graph
+// about) are excluded rather than guessed at — see backfillResolvedAt in
+// poller.js for the active repair pass on existing RESOLVED rows.
 const resolutionStatsStmt = db.prepare(
-  "SELECT AVG((julianday(updated_at) - julianday(received_at)) * 24) as avgHours, COUNT(*) as count FROM enquiries WHERE status = 'RESOLVED'"
+  "SELECT AVG((julianday(resolved_at) - julianday(received_at)) * 24) as avgHours, COUNT(*) as count FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL"
 );
 const byFacilityStmt = db.prepare(
   "SELECT facility, COUNT(*) as count FROM enquiries WHERE facility IS NOT NULL AND facility != '' GROUP BY facility ORDER BY count DESC LIMIT 10"
@@ -561,6 +587,7 @@ module.exports = {
   overviewStats,
   listOpenEnquiriesForFlagSync,
   listOpenEnquiriesForReplySync,
+  listResolvedEnquiriesMissingResolvedAt,
   statusForFlag,
   statusForCategories,
   statusForReply,

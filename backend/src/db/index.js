@@ -53,6 +53,18 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_enquiries_received_at ON enquiries(received_at);
 `);
 
+// Added after the table already existed in production, so it's a real
+// migration rather than part of CREATE TABLE above — SQLite has no
+// "ADD COLUMN IF NOT EXISTS", so this checks first instead of relying on
+// try/catch to swallow a "duplicate column" error (which would also
+// swallow a genuinely different failure). Distinct from updated_at: that
+// bumps on any field change, so it can't be trusted as "when did this
+// actually become resolved" (see resolutionStatsStmt in repository.js).
+const hasResolvedAt = db.prepare('PRAGMA table_info(enquiries)').all().some((c) => c.name === 'resolved_at');
+if (!hasResolvedAt) {
+  db.exec('ALTER TABLE enquiries ADD COLUMN resolved_at TEXT');
+}
+
 // One-time reclassification, not a schema change — REMOVED used to mean "the
 // message became unreachable via Graph," modeled as distinct from RESOLVED
 // since that was assumed to be unconfirmed evidence of being handled.

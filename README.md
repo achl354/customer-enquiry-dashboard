@@ -398,6 +398,36 @@ as `NEW` and shows up in the existing low-confidence review list, rather
 than being silently hidden with nothing ever flagging it for a second
 look.
 
+## Avg. resolution time (`resolved_at`)
+
+The "Avg. resolution time" stat is `resolved_at - received_at`, not
+`updated_at - received_at`. `updated_at` bumps on *any* field change — a
+draft regenerated, a category corrected long after the fact — so it can't
+be trusted as "when did this actually become resolved." `resolved_at` is a
+dedicated column, set once and never touched again by anything unrelated
+to the actual resolution event.
+
+Where it comes from: whenever a category tag, folder-move, or flag
+resolves an enquiry (see the status-sync sections above), the poller also
+captures the source message's Graph `lastModifiedDateTime` — Exchange
+bumps this on a folder move the same as any other property change, so it's
+a genuine historical timestamp, not "whenever this poll cycle happened to
+run." For a message that's confirmed gone entirely, there's nothing left
+to ask Graph about, so `resolved_at` stays `NULL` for that one rather than
+guessed at.
+
+**Backfill for existing data.** Since `resolved_at` didn't always exist,
+`backfillResolvedAt()` in `graph/poller.js` runs on every poll cycle,
+re-querying Graph for `lastModifiedDateTime` on any `RESOLVED` enquiry
+still missing it. This population only shrinks over time (as backfill
+succeeds) or stays flat (for messages confirmed gone, which have nothing
+to recover) — it never grows, since new resolutions get `resolved_at` set
+immediately going forward. `overviewStats()` only averages rows that
+actually have a `resolved_at`, so the Overview tile explicitly
+distinguishes "no resolved enquiries yet" from "N resolved, but timing
+data isn't available yet" (the latter is normal right after deploying this
+— it clears up as the backfill runs).
+
 ## Access control (Basic Auth)
 
 The dashboard shows real customer/health-department correspondence with no

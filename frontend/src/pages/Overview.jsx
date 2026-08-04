@@ -130,6 +130,20 @@ export default function Overview() {
       : `${weeklyDelta > 0 ? '+' : ''}${weeklyDelta} vs last week`;
 
   const hasEnoughResolved = stats.resolvedCount >= MIN_RESOLVED_SAMPLE;
+  // resolvedCount only counts RESOLVED enquiries with a known resolved_at
+  // (see resolutionStatsStmt in db/repository.js) — distinct from the true
+  // total in byStatus.RESOLVED, since a resolution detected before the
+  // resolved_at column existed, or one whose source message is confirmed
+  // gone, has no timing data to average even though it's genuinely resolved.
+  const totalResolved = stats.byStatus.RESOLVED || 0;
+  const resolutionTimeHint =
+    totalResolved === 0
+      ? 'No resolved enquiries yet'
+      : stats.resolvedCount === 0
+        ? `${totalResolved} resolved, but timing data isn't available yet`
+        : hasEnoughResolved
+          ? `based on ${stats.resolvedCount} resolved`
+          : `only ${stats.resolvedCount} resolved so far — too few for a reliable average`;
 
   // "Total enquiries" counts from a fixed reporting start date (backend
   // constant, not the mailbox's actual first-ever message) — without a
@@ -193,13 +207,7 @@ export default function Overview() {
           <div className="value">
             {hasEnoughResolved ? `${avgResolutionDisplay}h` : '—'}
           </div>
-          <div className="draft-hint">
-            {stats.resolvedCount === 0
-              ? 'No resolved enquiries yet'
-              : hasEnoughResolved
-                ? `based on ${stats.resolvedCount} resolved`
-                : `only ${stats.resolvedCount} resolved so far — too few for a reliable average`}
-          </div>
+          <div className="draft-hint">{resolutionTimeHint}</div>
         </Link>
         <Link
           to="/queue?lowConfidence=true"

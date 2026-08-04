@@ -54,7 +54,17 @@ async function syncFlagStatuses() {
       repo.statusForFlag(info?.flagStatus) ||
       repo.statusForMissingMessage(info?.missing);
     if (nextStatus === 'RESOLVED' || nextStatus === 'IGNORED') {
-      repo.updateEnquiry(enquiry.id, { status: nextStatus });
+      const patch = { status: nextStatus };
+      // lastModifiedDateTime is Graph's own record of when the message was
+      // actually last touched (a folder move counts) — a real historical
+      // timestamp, unlike our own updated_at which just reflects whenever
+      // this poll cycle happened to run. Absent for the statusForMissingMessage
+      // path (message unreachable, nothing left to ask Graph about) — left
+      // null there rather than guessed at; see resolutionStatsStmt.
+      if (nextStatus === 'RESOLVED' && info?.lastModifiedDateTime) {
+        patch.resolvedAt = info.lastModifiedDateTime;
+      }
+      repo.updateEnquiry(enquiry.id, patch);
       updated += 1;
     } else if (nextStatus === 'IN_PROGRESS' && enquiry.status === 'NEW') {
       repo.updateEnquiry(enquiry.id, { status: 'IN_PROGRESS' });
@@ -63,6 +73,36 @@ async function syncFlagStatuses() {
   }
 
   return { checked: open.length, updated };
+}
+
+/**
+ * Repair pass for RESOLVED enquiries that don't have resolved_at yet —
+ * either resolved before that column existed, or resolved on a poll cycle
+ * where the message came back missing at that exact moment (transient
+ * failure, not necessarily gone for good). Re-fetches lastModifiedDateTime
+ * for each and sets it if the message still resolves. A message that's
+ * confirmed gone for good stays resolved_at: null permanently — there's
+ * nothing left to ask Graph about, and this list only shrinks over time as
+ * more of it succeeds, never grows (see listResolvedEnquiriesMissingResolvedAt),
+ * so re-checking the same small leftover set each poll is a deliberately
+ * accepted cost rather than worth adding retry-limiting complexity for.
+ */
+async function backfillResolvedAt() {
+  const candidates = repo.listResolvedEnquiriesMissingResolvedAt();
+  if (candidates.length === 0) return { checked: 0, updated: 0 };
+
+  const results = await graphClient.fetchMessageFlags(candidates.map((e) => e.graphMessageId));
+
+  let updated = 0;
+  for (const enquiry of candidates) {
+    const info = results.get(enquiry.graphMessageId);
+    if (info?.lastModifiedDateTime) {
+      repo.updateEnquiry(enquiry.id, { resolvedAt: info.lastModifiedDateTime });
+      updated += 1;
+    }
+  }
+
+  return { checked: candidates.length, updated };
 }
 
 /**
@@ -114,6 +154,7 @@ function runPollOnce() {
 
     const flagSync = await syncFlagStatuses();
     const replySync = await syncReplyStatuses();
+    const resolvedAtBackfill = await backfillResolvedAt();
 
     lastPollAt = new Date().toISOString();
     return {
@@ -124,6 +165,8 @@ function runPollOnce() {
       flagsUpdated: flagSync.updated,
       repliesChecked: replySync.checked,
       repliesUpdated: replySync.updated,
+      resolvedAtChecked: resolvedAtBackfill.checked,
+      resolvedAtBackfilled: resolvedAtBackfill.updated,
       polledAt: lastPollAt,
     };
   })().finally(() => {

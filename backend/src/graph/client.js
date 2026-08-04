@@ -324,7 +324,13 @@ async function fetchAllFolderMessagesSince(mailboxEmail, sinceIso) {
     if ((i + 1) % 25 === 0) {
       console.log(`[graph-client] fetchAllFolderMessagesSince: checked ${i + 1}/${folders.length} folders, ${messages.length} messages so far`);
     }
-    let url = `${GRAPH_BASE}/users/${mailbox}/mailFolders/${folder.id}/messages?${select}&$filter=receivedDateTime ge ${sinceIso}&$top=999`;
+    // $orderby=receivedDateTime alongside the matching $filter, same as
+    // every other date-filtered query in this file (fetchMessagesSince,
+    // fetchAllMailboxMessagesSince) — Graph's $filter on a date field
+    // without a same-property $orderby is a known source of unreliable
+    // results. This was missing here originally; fixed after the real
+    // mailbox came back with fewer messages than expected.
+    let url = `${GRAPH_BASE}/users/${mailbox}/mailFolders/${folder.id}/messages?${select}&$filter=receivedDateTime ge ${sinceIso}&$orderby=receivedDateTime desc&$top=999`;
     let pageCount = 0;
     try {
       while (url && pageCount < MAX_FOLDER_MESSAGE_PAGES) {

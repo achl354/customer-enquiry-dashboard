@@ -112,11 +112,25 @@ function parseSinceParam(req) {
   return { sinceIso: new Date(since).toISOString(), sinceRaw: since };
 }
 
+// Strips accidental leading/trailing quote characters — an email address
+// never legitimately contains one, but MAILBOX is easy to enter with
+// quotes by habit in a hosting dashboard's raw env var field (unlike a
+// .env file, most of those don't strip them), and a query param can pick
+// one up depending on how a URL got quoted/pasted on the way in. Graph
+// itself surfaces this unhelpfully — "ErrorIncorrectRoutingHint", not
+// anything that says "check for a stray quote" — so this is cheap
+// insurance against a confusing failure rather than a fix for a
+// specific confirmed cause.
+function resolveMailbox(req) {
+  const raw = req.query.mailbox || process.env.MAILBOX || '';
+  return raw.trim().replace(/^['"]+|['"]+$/g, '');
+}
+
 router.get('/status', (req, res) => {
   res.json({
     graphConfigured: isGraphConfigured(),
     aiConfigured: aiClassifier.isConfigured(),
-    mailbox: process.env.MAILBOX || null,
+    mailbox: resolveMailbox({ query: {} }) || null,
   });
 });
 
@@ -133,7 +147,7 @@ router.get('/folder-map', async (req, res) => {
   if (!isGraphConfigured()) {
     return res.status(400).json({ error: 'Microsoft Graph is not configured. Set TENANT_ID, CLIENT_ID, CLIENT_SECRET, MAILBOX in .env' });
   }
-  const mailbox = req.query.mailbox || process.env.MAILBOX;
+  const mailbox = resolveMailbox(req);
   try {
     const folders = await graphClient.fetchFolderTree(mailbox);
     res.set('Content-Type', 'text/csv; charset=utf-8');
@@ -209,7 +223,7 @@ router.get('/folder-messages', async (req, res) => {
   }
   const { error, sinceIso, sinceRaw } = parseSinceParam(req);
   if (error) return res.status(400).json({ error });
-  const mailbox = req.query.mailbox || process.env.MAILBOX;
+  const mailbox = resolveMailbox(req);
   const allFolders = req.query.allFolders === 'true' || req.query.allFolders === '1';
 
   let folders;

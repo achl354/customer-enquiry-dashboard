@@ -81,6 +81,10 @@ export function getResolutionByPriority(options = {}) {
   return request('/stats/resolution-by-priority', options);
 }
 
+export function getFirstResponseByPriority(options = {}) {
+  return request('/stats/first-response-by-priority', options);
+}
+
 export function getBacklogTrend(granularity, options = {}) {
   return request(`/stats/backlog-trend?granularity=${encodeURIComponent(granularity)}`, options);
 }

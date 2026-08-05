@@ -633,16 +633,46 @@ function firstResponseTimeTrend(granularity) {
 // byFacility/byCategory), not a period trend: "is URGENT actually
 // resolved faster than NORMAL?" is a comparison across priority tiers, not
 // across time, so there's no granularity toggle here.
+//
+// slaCompliantCount/slaComplianceRate bound at query time like
+// resolutionTimeTrend's — default 24h matches Urgent's "max acceptable
+// resolution time" target (see Overview.jsx's RAG thresholds), applied
+// uniformly across all four priorities here since this is one shared
+// snapshot query; only Urgent currently has a target defined to actually
+// compare it against.
 const resolutionTimeByPriorityStmt = db.prepare(
   `SELECT priority,
           AVG((julianday(resolved_at) - julianday(received_at)) * 24) as avgHours,
-          COUNT(*) as count
+          COUNT(*) as count,
+          SUM(CASE WHEN (julianday(resolved_at) - julianday(received_at)) * 24 <= @slaHours THEN 1 ELSE 0 END) as slaCompliantCount
    FROM enquiries WHERE status = 'RESOLVED' AND resolved_at IS NOT NULL
    GROUP BY priority`
 );
 
-function resolutionTimeByPriority() {
-  return resolutionTimeByPriorityStmt.all();
+const DEFAULT_PRIORITY_SLA_HOURS = 24;
+
+function resolutionTimeByPriority(slaHours = DEFAULT_PRIORITY_SLA_HOURS) {
+  return resolutionTimeByPriorityStmt.all({ slaHours }).map((row) => ({
+    ...row,
+    slaComplianceRate: row.count > 0 ? row.slaCompliantCount / row.count : null,
+  }));
+}
+
+// Same idea as firstResponseTimeTrend but grouped by priority instead of
+// period, mirroring resolutionTimeByPriority above — "how fast did someone
+// touch this" broken out by tier rather than over time. Same forward-
+// looking-only caveat as firstResponseTimeTrend (see first_replied_at in
+// db/index.js): sparse/empty for a while after deploy, not backfillable.
+const firstResponseTimeByPriorityStmt = db.prepare(
+  `SELECT priority,
+          AVG((julianday(first_replied_at) - julianday(received_at)) * 24) as avgHours,
+          COUNT(*) as count
+   FROM enquiries WHERE first_replied_at IS NOT NULL
+   GROUP BY priority`
+);
+
+function firstResponseTimeByPriority() {
+  return firstResponseTimeByPriorityStmt.all();
 }
 
 // "Open at end of period" — enquiries received on/before that moment whose
@@ -991,6 +1021,7 @@ module.exports = {
   resolutionTimeTrend,
   firstResponseTimeTrend,
   resolutionTimeByPriority,
+  firstResponseTimeByPriority,
   backlogTrend,
   volumeTrend,
   statusByPeriod,

@@ -44,9 +44,22 @@ router.get('/first-response-trend', (req, res) => {
 });
 
 // All-time snapshot, not a period trend — see resolutionTimeByPriority in
-// db/repository.js for why this doesn't take a granularity param.
+// db/repository.js for why this doesn't take a granularity param. Same
+// optional ?sla=<hours> threshold as /resolution-trend (default 24,
+// matching Urgent's "max acceptable resolution time" target).
 router.get('/resolution-by-priority', (req, res) => {
-  res.json(repo.resolutionTimeByPriority());
+  const slaHours = req.query.sla !== undefined ? Number(req.query.sla) : undefined;
+  if (slaHours !== undefined && (Number.isNaN(slaHours) || slaHours <= 0)) {
+    return res.status(400).json({ error: `Invalid "sla" hours: ${req.query.sla}` });
+  }
+  res.json(repo.resolutionTimeByPriority(slaHours));
+});
+
+// All-time snapshot of first-response time broken out by priority — same
+// shape as resolution-by-priority, no SLA column (see
+// firstResponseTimeByPriority in db/repository.js).
+router.get('/first-response-by-priority', (req, res) => {
+  res.json(repo.firstResponseTimeByPriority());
 });
 
 // Open-count-at-end-of-period — see backlogTrend/backlogAtStmt in

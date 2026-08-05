@@ -72,32 +72,42 @@ export function DualTrendChart({ data, xKey, seriesA, seriesB, xFormat, format }
         <span className="legend-item"><span className="legend-swatch" style={{ background: seriesA.color }} />{seriesA.label}</span>
         <span className="legend-item"><span className="legend-swatch" style={{ background: seriesB.color }} />{seriesB.label}</span>
       </div>
-      <svg
-        viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        preserveAspectRatio="none"
-        onMouseMove={handleMove}
-        onMouseLeave={() => setHoverIndex(null)}
-      >
-        {yTicks.map((v) => (
-          <g key={v}>
-            <line x1={PAD_LEFT} y1={yFor(v).toFixed(1)} x2={WIDTH - PAD_RIGHT} y2={yFor(v).toFixed(1)} stroke="var(--gridline)" strokeWidth="1" />
-            <text x={PAD_LEFT - 6} y={yFor(v) + 3} textAnchor="end" className="trend-chart-ytick">
-              {Math.round(v).toLocaleString()}
-            </text>
-          </g>
-        ))}
-        <path d={areaFor(seriesA.key)} fill={seriesA.color} opacity="0.08" stroke="none" />
-        <path d={pathFor(seriesA.key)} fill="none" stroke={seriesA.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        <path d={areaFor(seriesB.key)} fill={seriesB.color} opacity="0.08" stroke="none" />
-        <path d={pathFor(seriesB.key)} fill="none" stroke={seriesB.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        {hovered && (
-          <>
-            <line x1={hoveredX} y1={PAD_TOP} x2={hoveredX} y2={baseline} stroke="var(--axis)" strokeWidth="1" />
-            <circle cx={hoveredX} cy={yFor(hovered[seriesA.key])} r="4" fill={seriesA.color} stroke="var(--surface-1)" strokeWidth="2" />
-            <circle cx={hoveredX} cy={yFor(hovered[seriesB.key])} r="4" fill={seriesB.color} stroke="var(--surface-1)" strokeWidth="2" />
-          </>
-        )}
-      </svg>
+      <div className="trend-chart-plot">
+        <svg
+          viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
+          preserveAspectRatio="none"
+          onMouseMove={handleMove}
+          onMouseLeave={() => setHoverIndex(null)}
+        >
+          {yTicks.map((v) => (
+            <line key={v} x1={PAD_LEFT} y1={yFor(v).toFixed(1)} x2={WIDTH - PAD_RIGHT} y2={yFor(v).toFixed(1)} stroke="var(--gridline)" strokeWidth="1" />
+          ))}
+          <path d={areaFor(seriesA.key)} fill={seriesA.color} opacity="0.08" stroke="none" />
+          <path d={pathFor(seriesA.key)} fill="none" stroke={seriesA.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <path d={areaFor(seriesB.key)} fill={seriesB.color} opacity="0.08" stroke="none" />
+          <path d={pathFor(seriesB.key)} fill="none" stroke={seriesB.color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          {hovered && (
+            <>
+              <line x1={hoveredX} y1={PAD_TOP} x2={hoveredX} y2={baseline} stroke="var(--axis)" strokeWidth="1" />
+              <circle cx={hoveredX} cy={yFor(hovered[seriesA.key])} r="4" fill={seriesA.color} stroke="var(--surface-1)" strokeWidth="2" />
+              <circle cx={hoveredX} cy={yFor(hovered[seriesB.key])} r="4" fill={seriesB.color} stroke="var(--surface-1)" strokeWidth="2" />
+            </>
+          )}
+        </svg>
+        {/* Rendered as an HTML overlay, not SVG <text>, so the labels stay
+            legible — the svg above uses preserveAspectRatio="none" to fill
+            the panel's actual (non-4:1) aspect ratio, which stretches width
+            and height independently and would otherwise smear any SVG text
+            into illegible glyphs (the plotted lines don't have this problem;
+            a distorted curve still reads fine, a distorted digit doesn't).
+            Same reasoning trend-chart-axis below already followed for the
+            X-axis labels. */}
+        <div className="trend-chart-yaxis" style={{ width: `${((PAD_LEFT - 2) / WIDTH) * 100}%` }}>
+          {yTicks.map((v) => (
+            <span key={v} style={{ top: `${(yFor(v) / HEIGHT) * 100}%` }}>{Math.round(v).toLocaleString()}</span>
+          ))}
+        </div>
+      </div>
       <div className="trend-chart-axis">
         <span>{fmtX(data[0][xKey])}</span>
         <span>{fmtX(data[Math.floor(data.length / 2)][xKey])}</span>

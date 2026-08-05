@@ -662,6 +662,22 @@
   flex-direction: column;
 }
 
+/* Conditional "needs attention" accents for a few specific Overview panels
+   (Action queue, Open enquiries by age, Backlog) — same inset-bar + tinted-
+   background treatment as .enquiry-table's row-urgent, applied only when
+   that panel's own data actually signals a problem (see Overview.jsx),
+   not as a permanent decoration. Deliberately not given to every panel —
+   an accent that's always on stops meaning anything. */
+.panel-accent-warning {
+  background: color-mix(in srgb, var(--status-warning) 5%, var(--surface-1));
+  box-shadow: var(--card-shadow), inset 3px 0 0 var(--status-warning);
+}
+
+.panel-accent-critical {
+  background: color-mix(in srgb, var(--status-critical) 5%, var(--surface-1));
+  box-shadow: var(--card-shadow), inset 3px 0 0 var(--status-critical);
+}
+
 /* CSS Grid stretches every panel in a .chart-grid row to match that
    row's height (see .chart-grid's flex:1 above) — these two make each
    panel's actual content use that extra height rather than just leaving
@@ -840,9 +856,28 @@
   cursor: crosshair;
 }
 
-.trend-chart-ytick {
+/* Wraps the svg + its Y-axis label overlay so the labels (plain HTML, not
+   SVG text — see the comment in DualTrendChart.jsx/NetDiffChart.jsx) can be
+   absolutely positioned against the svg's actual rendered box. */
+.trend-chart-plot {
+  position: relative;
+}
+
+.trend-chart-yaxis {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.trend-chart-yaxis span {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  transform: translateY(-50%);
+  text-align: right;
   font-size: 9.5px;
-  fill: var(--text-muted);
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .net-diff-chart {

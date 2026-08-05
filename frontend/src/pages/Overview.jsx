@@ -250,6 +250,18 @@ export default function Overview() {
     return stats.agingBuckets.map((b) => ({ key: b.bucket, value: b.count, label: b.bucket, color: AGING_COLORS[b.bucket] }));
   }, [stats]);
 
+  // "Needs attention" accent for Open enquiries by age — critical once
+  // 7d+ is the single largest bucket (most of the open queue is stale, not
+  // just some of it), warning if there's a non-trivial 7d+ bucket but it's
+  // not yet the largest, neutral otherwise.
+  const agingAccent = useMemo(() => {
+    if (agingData.length === 0) return null;
+    const sevenPlus = agingData.find((b) => b.key === '7d+')?.value ?? 0;
+    if (sevenPlus === 0) return null;
+    const maxCount = Math.max(...agingData.map((b) => b.value));
+    return sevenPlus === maxCount ? 'critical' : 'warning';
+  }, [agingData]);
+
   // Action queue — the 5 longest-waiting open enquiries (see
   // oldestOpenQueue in db/repository.js), replacing the single "oldest
   // unactioned enquiry" banner. No owner column: assigned_to isn't a real,
@@ -260,6 +272,13 @@ export default function Overview() {
     if (!stats) return [];
     return stats.oldestOpenQueue.map((e) => ({ ...e, age: formatAge(e.receivedAt) }));
   }, [stats]);
+
+  // "Needs attention" accent for the Action queue panel — oldestOpenQueue
+  // is already sorted longest-waiting-first, so checking the first row's
+  // age against the same 48h SLA used elsewhere on this page tells us
+  // whether *any* row in the queue is overdue.
+  const actionQueueOverdue = actionQueueData.length > 0
+    && (Date.now() - new Date(actionQueueData[0].receivedAt).getTime()) > DEFAULT_SLA_HOURS * 60 * 60 * 1000;
 
   // count (and, for resolution time, SLA compliance) folded into the label
   // rather than a second BarList series, since they're on a completely
@@ -295,6 +314,13 @@ export default function Overview() {
       label: formatTrendPeriod(r.period, backlogGranularity),
     }));
   }, [backlogTrend.data, backlogGranularity]);
+
+  // "Needs attention" accent for Backlog — warning when the most recent
+  // period's backlog is higher than the one before it (same
+  // growing/shrinking framing the net-diff chart already uses), i.e. the
+  // trend itself is worsening, not just the raw count being high.
+  const backlogGrowing = backlogTrendData.length >= 2
+    && backlogTrendData[backlogTrendData.length - 1].value > backlogTrendData[backlogTrendData.length - 2].value;
 
   // Raw by default; the 7-day rolling average (day granularity only)
   // replaces received/resolved with their smoothed equivalents rather than
@@ -373,23 +399,6 @@ export default function Overview() {
         </Link>
       </div>
 
-      {actionQueueData.length > 0 && (
-        <div className="panel">
-          <h3>Action queue — longest waiting, still open</h3>
-          <ul className="action-queue">
-            {actionQueueData.map((e) => (
-              <li key={e.id} className="action-queue-row">
-                <span className="action-queue-age">{e.age}</span>
-                <PriorityBadge priority={e.priority} />
-                <CategoryPill category={e.category} />
-                <Link to={`/enquiries/${e.id}`} className="action-queue-subject">{e.subject}</Link>
-                <span className="action-queue-sender">{e.sender.email}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       <div className="panel">
         <div className="panel-header-row">
           <h3>Enquiry volume: received vs. resolved by {volumeGranularity}</h3>
@@ -445,7 +454,7 @@ export default function Overview() {
           </TrendPanelBody>
         </div>
 
-        <div className="panel">
+        <div className={`panel${agingAccent ? ` panel-accent-${agingAccent}` : ''}`}>
           <h3>Open enquiries by age</h3>
           {agingData.some((b) => b.value > 0) ? (
             <StackedBar data={agingData} />
@@ -486,7 +495,7 @@ export default function Overview() {
           </TrendPanelBody>
         </div>
 
-        <div className="panel">
+        <div className={`panel${backlogGrowing ? ' panel-accent-warning' : ''}`}>
           <div className="panel-header-row">
             <h3>Backlog (open at end of {backlogGranularity})</h3>
             <GranularityToggle granularities={PERIOD_GRANULARITIES} value={backlogGranularity} onChange={setBacklogGranularity} />
@@ -504,6 +513,23 @@ export default function Overview() {
           </TrendPanelBody>
         </div>
       </div>
+
+      {actionQueueData.length > 0 && (
+        <div className={`panel${actionQueueOverdue ? ' panel-accent-critical' : ''}`}>
+          <h3>Action queue — longest waiting, still open</h3>
+          <ul className="action-queue">
+            {actionQueueData.map((e) => (
+              <li key={e.id} className="action-queue-row">
+                <span className="action-queue-age">{e.age}</span>
+                <PriorityBadge priority={e.priority} />
+                <CategoryPill category={e.category} />
+                <Link to={`/enquiries/${e.id}`} className="action-queue-subject">{e.subject}</Link>
+                <span className="action-queue-sender">{e.sender.email}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
 
       <div className="chart-grid">
         <div className="panel">

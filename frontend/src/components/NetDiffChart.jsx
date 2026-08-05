@@ -50,29 +50,36 @@ export function NetDiffChart({ data, xKey, xFormat }) {
 
   return (
     <div className="trend-chart net-diff-chart">
-      <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none">
-        <text x={PAD_LEFT - 6} y={zeroY + 3} textAnchor="end" className="trend-chart-ytick">0</text>
-        <line x1={PAD_LEFT} y1={zeroY} x2={WIDTH - PAD_RIGHT} y2={zeroY} stroke="var(--gridline)" strokeWidth="1" />
-        {nets.map((n, i) => {
-          const h = heightFor(n);
-          const isGrowing = n > 0;
-          const y = isGrowing ? zeroY - h : zeroY;
-          return (
-            <rect
-              key={data[i][xKey]}
-              x={xFor(i)}
-              y={y}
-              width={barW}
-              height={Math.max(h, 1)}
-              rx="2"
-              fill={isGrowing ? 'var(--status-warning)' : 'var(--status-good)'}
-              opacity={hoverIndex === i ? 1 : 0.75}
-              onMouseEnter={() => setHoverIndex(i)}
-              onMouseLeave={() => setHoverIndex(null)}
-            />
-          );
-        })}
-      </svg>
+      <div className="trend-chart-plot">
+        <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} preserveAspectRatio="none">
+          <line x1={PAD_LEFT} y1={zeroY} x2={WIDTH - PAD_RIGHT} y2={zeroY} stroke="var(--gridline)" strokeWidth="1" />
+          {nets.map((n, i) => {
+            const h = heightFor(n);
+            const isGrowing = n > 0;
+            const y = isGrowing ? zeroY - h : zeroY;
+            return (
+              <rect
+                key={data[i][xKey]}
+                x={xFor(i)}
+                y={y}
+                width={barW}
+                height={Math.max(h, 1)}
+                rx="2"
+                fill={isGrowing ? 'var(--status-warning)' : 'var(--status-good)'}
+                opacity={hoverIndex === i ? 1 : 0.75}
+                onMouseEnter={() => setHoverIndex(i)}
+                onMouseLeave={() => setHoverIndex(null)}
+              />
+            );
+          })}
+        </svg>
+        {/* HTML overlay, not SVG <text> — see the matching comment in
+            DualTrendChart.jsx for why (preserveAspectRatio="none" smears
+            SVG text into illegible glyphs at this chart's aspect ratio). */}
+        <div className="trend-chart-yaxis" style={{ width: `${((PAD_LEFT - 2) / WIDTH) * 100}%` }}>
+          <span style={{ top: `${(zeroY / HEIGHT) * 100}%` }}>0</span>
+        </div>
+      </div>
       <div className="trend-chart-axis">
         <span>{fmtX(data[0][xKey])}</span>
         <span>{fmtX(data[Math.floor(data.length / 2)][xKey])}</span>

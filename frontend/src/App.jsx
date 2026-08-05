@@ -123,9 +123,29 @@ function App() {
             <img className="brand-logo brand-logo-full" src={logoFull} alt="JD Healthcare Group" />
             <img className="brand-logo brand-logo-mark" src={logoMark} alt="JD Healthcare Group" />
           </div>
-          <div className="app-title">Enquiry Dashboard</div>
+          <div className="app-title">Enquiry Watch</div>
+          {ingestStatus?.mailbox && <div className="app-mailbox">{ingestStatus.mailbox}</div>}
 
           <div className="sidebar-nav">
+            {/* Real (functional) option is whichever mailbox is actually
+                configured (see backend/.env's MAILBOX) — the other two are
+                greyed-out placeholders for mailboxes this dashboard doesn't
+                support yet. No backend concept of "multiple mailboxes"
+                exists at all right now (one MAILBOX env var, one DB, one
+                Graph credential set); wiring an actual switch is a real
+                backend project, not a frontend-only change, so this is
+                deliberately just a preview of where that control will live. */}
+            {ingestStatus?.mailbox && (
+              // Uncontrolled (defaultValue, not value) — there's only one
+              // real option, so this never needs to notice a change; the
+              // point is letting it still open to preview the two disabled
+              // options below, which a fully `disabled` <select> couldn't.
+              <select className="sidebar-mailbox-select" defaultValue={ingestStatus.mailbox}>
+                <option value={ingestStatus.mailbox}>{ingestStatus.mailbox}</option>
+                <option disabled>sales@gatewayrehab.com.au (coming soon)</option>
+                <option disabled>sales@exquisitebodies.com.au (coming soon)</option>
+              </select>
+            )}
             <button type="button" className="sidebar-search-btn" onClick={() => setPaletteOpen(true)}>
               <IconSearch className="nav-icon" />
               <span className="nav-label">Quick search</span>

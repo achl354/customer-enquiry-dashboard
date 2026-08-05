@@ -40,7 +40,46 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: rgba(255, 255, 255, 0.45);
-  margin: 18px 8px 22px;
+  margin: 18px 8px 2px;
+}
+
+/* Sits directly under .app-title, dimmer than it — a subtitle, not a
+   second heading. Long addresses wrap rather than overflow the sidebar's
+   fixed width. */
+.app-mailbox {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.3);
+  margin: 0 8px 20px;
+  overflow-wrap: break-word;
+}
+
+/* Same visual language as .sidebar-search-btn below it (same tint,
+   radius, padding) so the two read as one connected control group. Only
+   one real, selectable option exists today — see the comment above this
+   in App.jsx — the other two render as the browser's native disabled-
+   option style (usually greyed automatically), which varies slightly by
+   browser but doesn't need to be pixel-perfect for a "coming soon" preview. */
+.sidebar-mailbox-select {
+  width: 100%;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  border: none;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.sidebar-mailbox-select:hover {
+  background: var(--brand-navy-tint);
+  color: #ffffff;
+}
+
+.sidebar-mailbox-select option {
+  color: initial;
 }
 
 /* Grows to fill the sidebar's height so sidebar-footer sits pinned to the
@@ -317,34 +356,6 @@
   flex: 1;
 }
 
-/* Keeps the title and mailbox address on one line where there's room;
-   flex-wrap lets the address drop to its own line on narrow screens
-   instead of forcing horizontal overflow. */
-.overview-header {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  column-gap: 10px;
-  margin-bottom: clamp(8px, 1.2vh, 16px);
-}
-
-.overview-separator {
-  font-size: 21px;
-  color: var(--text-muted);
-}
-
-/* A mailbox address has no spaces to wrap at, so without overflow-wrap a
-   narrow column doesn't shrink it — it silently gets clipped past the
-   container edge instead (worse than overflowing, since there's no
-   scrollbar to reveal the missing part either). */
-.overview-mailbox {
-  font-size: 21px;
-  font-weight: 600;
-  color: var(--text-muted);
-  min-width: 0;
-  overflow-wrap: break-word;
-}
-
 /* Primary stat row — the 3 headline numbers (Total enquiries, Open,
    Urgent & open). Fixed 3-column grid divides evenly with no orphan gap;
    below ~760px it drops straight to 1 column rather than stepping
@@ -480,6 +491,11 @@
   }
 
   .app-title,
+  .app-mailbox,
+  /* No icon to collapse to (unlike the nav links/search button below,
+     which keep their icon and just lose the label) — nothing meaningful
+     to show in a 64px icon rail, so this hides outright. */
+  .sidebar-mailbox-select,
   .sidebar-section,
   .nav-label,
   .nav-count,

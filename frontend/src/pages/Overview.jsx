@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   getOverviewStats,
-  getIngestStatus,
   getResolutionTrend,
   getFirstResponseTrend,
   getResolutionByPriority,
@@ -183,7 +182,6 @@ function GranularityToggle({ granularities, value, onChange }) {
 export default function Overview() {
   const [stats, setStats] = useState(null);
   const [error, setError] = useState(null);
-  const [mailbox, setMailbox] = useState(null);
 
   // Each of these three gets its own independent Month/Quarter/Year
   // toggle — briefly consolidated into one shared control, then split
@@ -205,12 +203,6 @@ export default function Overview() {
     load();
     const interval = setInterval(load, STATS_REFRESH_MS);
     return () => clearInterval(interval);
-  }, []);
-
-  // One-time — the mailbox address is static config, not something that
-  // changes while the page is open, unlike stats.
-  useEffect(() => {
-    getIngestStatus().then((s) => setMailbox(s.mailbox)).catch(() => {});
   }, []);
 
   // Each backed by its own usePeriodTrend call (fetch + AbortController
@@ -425,15 +417,11 @@ export default function Overview() {
 
   return (
     <div className="overview-page">
-      <div className="overview-header">
-        <h2>Enquiry Watch</h2>
-        {mailbox && (
-          <>
-            <span className="overview-separator">–</span>
-            <span className="overview-mailbox">{mailbox}</span>
-          </>
-        )}
-      </div>
+      {/* "Enquiry Watch" + the mailbox address now live permanently in the
+          sidebar (see App.jsx) rather than just on this one page — this
+          just needs its own page-level heading, same as All Enquiries'
+          "All enquiries" below. */}
+      <h2>Overview</h2>
 
       <div className="stat-grid">
         <div className="stat-tile stat-tile-in" style={{ animationDelay: '0ms' }}>

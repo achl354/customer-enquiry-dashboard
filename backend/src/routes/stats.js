@@ -86,4 +86,18 @@ router.get('/unattributed-domains', (req, res) => {
   res.json(repo.unattributedDomains());
 });
 
+// Follow-up diagnostic to the one above — the category split for a single
+// unattributed sender domain, e.g. ?domain=jdhealthcare.com.au. Tells you
+// whether that domain's "Not attributed" volume is genuinely internal mail
+// (facility doesn't apply) or customer-facing categories with an internal
+// sender (facility extraction is missing something real). See
+// unattributedDomainCategories in db/repository.js.
+router.get('/unattributed-domain-categories', (req, res) => {
+  const domain = req.query.domain;
+  if (!domain) {
+    return res.status(400).json({ error: 'Missing required "domain" query param.' });
+  }
+  res.json(repo.unattributedDomainCategories(domain));
+});
+
 module.exports = router;

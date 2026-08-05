@@ -113,6 +113,7 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 | `GET /api/stats/backlog-trend?granularity=month\|quarter\|year` | Open-enquiry count at the end of each period — an approximation, see "Backlog trend" below |
 | `GET /api/stats/status-by-period?granularity=month\|quarter\|year` | Status mix of enquiries *received* in the current month/fiscal-quarter/fiscal-year. No longer called by the frontend (the Overview panel using it was removed — see "Status mix (removed)" below) but left in place |
 | `GET /api/stats/unattributed-domains` | Diagnostic, not part of the Overview UI — sender domains behind the "Not attributed" bucket, ranked by count, for recalibrating `KNOWN_ORG_DOMAINS`/`GENERIC_DOMAINS` — see "Facility attribution" below |
+| `GET /api/stats/unattributed-domain-categories?domain=<domain>` | Diagnostic follow-up to the one above — category split for a single unattributed sender domain, e.g. `COMPANY_DOMAIN` itself — see "Facility attribution" below |
 | `GET /api/ingest/status` | Whether live Graph polling and AI classification are configured |
 | `POST /api/ingest/run` | Manually trigger one poll cycle (Inbox only) |
 | `GET /api/ingest/folder-map?mailbox=<address>` | CSV of every mail folder, walked by id — see "Folder tree enumeration" below |
@@ -682,6 +683,33 @@ adding to `KNOWN_ORG_DOMAINS` (a real customer/institutional org) or
 `GENERIC_DOMAINS` (consumer webmail / automated tooling, no genuine
 org) — recalibrating against real ranked volume instead of guessing at
 domains that might not even be significant.
+
+**On production, this diagnostic surfaced a different problem than a
+missing domain mapping.** Running it turned up almost the entire "Not
+attributed" bucket as `COMPANY_DOMAIN` itself (JD Healthcare's own
+domain) — not an obscure customer domain that needs adding to either
+list. That's because `facility` is forced to `null` whenever the sender
+is internal, *before* `orgNameForDomain()` (and therefore
+`KNOWN_ORG_DOMAINS`/`GENERIC_DOMAINS`) is even consulted — see
+`isInternalSender` in `classify.js`. Expanding those lists cannot affect
+this slice of the count at all.
+
+`GET /api/stats/unattributed-domain-categories?domain=<domain>` follows
+up on exactly that: the category split for a single unattributed domain
+(same unattributed + `TOTAL_SINCE` scope, narrowed to one domain, grouped
+by `category` instead of summed). Pointed at `COMPANY_DOMAIN`, it answers
+the real open question:
+
+- Mostly `INTERNAL` → correct behaviour, not a bug — facility genuinely
+  doesn't apply to staff-to-staff mail. The fix there is a metrics-
+  definition one (excluding `INTERNAL` from the "Not attributed" bucket
+  and the attribution-rate denominator), not a classification change.
+- A meaningful share of customer-facing categories (`PRODUCT_ENQUIRY`,
+  `EQUIPMENT_FAULT`, etc.) with an internal sender → a staff member is
+  forwarding/handling a real customer thread, and facility extraction is
+  actually missing the real customer's domain out of the forwarded
+  content. That's a materially different, larger fix than a domain-list
+  edit.
 
 ## Folder tree enumeration (`/folder-map`)
 

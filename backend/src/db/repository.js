@@ -770,6 +770,24 @@ const unattributedDomainsStmt = db.prepare(
 function unattributedDomains() {
   return unattributedDomainsStmt.all();
 }
+
+// Category split within a single unattributed sender domain — built to
+// answer one question: is COMPANY_DOMAIN's chunk of "Not attributed"
+// genuinely internal mail (facility doesn't apply, by design — see
+// isInternalSender in classify.js) or customer-facing categories with an
+// internal sender (a staff member forwarding/handling a real customer
+// thread, where facility extraction is actually missing something)? Same
+// TOTAL_SINCE + unattributed scope as unattributedDomainsStmt above, just
+// narrowed to one domain and split by category instead of summed.
+const unattributedDomainCategoriesStmt = db.prepare(
+  `SELECT category, COUNT(*) as count FROM enquiries
+   WHERE (facility IS NULL OR facility = '') AND received_at >= '${TOTAL_SINCE}' AND sender_domain = @domain
+   GROUP BY category ORDER BY count DESC`
+);
+
+function unattributedDomainCategories(domain) {
+  return unattributedDomainCategoriesStmt.all({ domain });
+}
 const agingRowsStmt = db.prepare(
   `SELECT
      CASE
@@ -977,4 +995,5 @@ module.exports = {
   volumeTrend,
   statusByPeriod,
   unattributedDomains,
+  unattributedDomainCategories,
 };

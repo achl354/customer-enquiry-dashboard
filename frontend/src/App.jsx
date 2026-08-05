@@ -124,7 +124,6 @@ function App() {
             <img className="brand-logo brand-logo-mark" src={logoMark} alt="JD Healthcare Group" />
           </div>
           <div className="app-title">Enquiry Watch</div>
-          {ingestStatus?.mailbox && <div className="app-mailbox">{ingestStatus.mailbox}</div>}
 
           <div className="sidebar-nav">
             {/* Real (functional) option is whichever mailbox is actually

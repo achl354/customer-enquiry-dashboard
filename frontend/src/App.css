@@ -34,23 +34,17 @@
   display: none;
 }
 
+/* The sidebar's main heading — no mailbox subtitle underneath it anymore
+   (that only lives in the picker dropdown below now), so this is bold and
+   bright rather than the dim, subdued label it was when it had a
+   subtitle to defer to. */
 .app-title {
-  font-size: 12px;
-  font-weight: 500;
+  font-size: 16px;
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
-  color: rgba(255, 255, 255, 0.45);
-  margin: 18px 8px 2px;
-}
-
-/* Sits directly under .app-title, dimmer than it — a subtitle, not a
-   second heading. Long addresses wrap rather than overflow the sidebar's
-   fixed width. */
-.app-mailbox {
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.3);
-  margin: 0 8px 20px;
-  overflow-wrap: break-word;
+  color: rgba(255, 255, 255, 0.92);
+  margin: 18px 8px 20px;
 }
 
 /* Same visual language as .sidebar-search-btn below it (same tint,
@@ -511,7 +505,6 @@
   }
 
   .app-title,
-  .app-mailbox,
   /* No icon to collapse to (unlike the nav links/search button below,
      which keep their icon and just lose the label) — nothing meaningful
      to show in a 64px icon rail, so this hides outright. */

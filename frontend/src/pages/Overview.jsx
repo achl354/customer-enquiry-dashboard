@@ -14,7 +14,7 @@ import { DualTrendChart } from '../components/DualTrendChart';
 import { NetDiffChart } from '../components/NetDiffChart';
 import { StackedBar } from '../components/StackedBar';
 import { OverviewSkeleton } from '../components/Skeletons';
-import { IconLayers, IconInbox, IconAlertTriangle } from '../components/Icons';
+import { IconLayers, IconInbox, IconAlertTriangle, IconNote } from '../components/Icons';
 import { PriorityBadge, CategoryPill } from '../components/Badges';
 import { categoryLabel, priorityLabel } from '../taxonomy';
 import { useCountUp } from '../hooks/useCountUp';
@@ -582,7 +582,12 @@ export default function Overview() {
                   <Link to={`/enquiries/${e.id}`} className="action-queue-subject">{e.subject}</Link>
                   <span className="action-queue-sender">{e.sender.email}</span>
                 </div>
-                {e.statusNote && <div className="action-queue-note" title={e.statusNote}>{e.statusNote}</div>}
+                {e.statusNote && (
+                  <div className="action-queue-note" title={e.statusNote}>
+                    <IconNote className="action-queue-note-icon" />
+                    <span>{e.statusNote}</span>
+                  </div>
+                )}
               </li>
             ))}
           </ul>

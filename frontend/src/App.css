@@ -419,14 +419,34 @@
   font-size: 13px;
 }
 
-/* Staff's own free-text ("awaiting supplier feedback") — italic + muted so
-   it reads as a note, not another data field, and only rendered at all
-   when one's actually been set (see Overview.jsx). */
+/* Staff's own free-text ("awaiting supplier feedback") — only rendered at
+   all when one's actually been set (see Overview.jsx). A leading icon
+   marks it as a note rather than another data field, instead of italics —
+   easier to spot at a glance and doesn't fight with long note text that
+   already reads oddly in italic. No fixed indent (the row above has
+   variable-width badges, so nothing to reliably align under); this just
+   starts at the row's own left edge as its own second line. */
 .action-queue-note {
-  margin: 3px 0 0 42px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 3px;
   font-size: 12px;
-  font-style: italic;
   color: var(--text-muted);
+}
+
+.action-queue-note-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
+/* min-width: 0 overrides flex's default auto min-width, which would
+   otherwise let this grow to fit the full note text before ellipsis ever
+   gets a chance to kick in. */
+.action-queue-note span {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

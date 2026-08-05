@@ -89,9 +89,11 @@ export function getVolumeTrend(granularity, options = {}) {
   return request(`/stats/volume-trend?granularity=${encodeURIComponent(granularity)}`, options);
 }
 
-export function getStatusByPeriod(granularity, options = {}) {
-  return request(`/stats/status-by-period?granularity=${encodeURIComponent(granularity)}`, options);
-}
+// getStatusByPeriod (status mix) was removed from Overview per feedback
+// that it added less signal than Open-enquiries-by-age/Backlog trend
+// already provide — the backend endpoint (/stats/status-by-period) and
+// repository.js's statusByPeriod() are left in place since they cost
+// nothing to keep and could still be called directly if useful later.
 
 export function getIngestStatus() {
   return request('/ingest/status');

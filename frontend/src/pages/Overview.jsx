@@ -8,7 +8,6 @@ import {
   getResolutionByPriority,
   getBacklogTrend,
   getVolumeTrend,
-  getStatusByPeriod,
   reclassifyByFacility,
   getReclassifyByFacilityStatus,
 } from '../api';
@@ -19,7 +18,7 @@ import { StackedBar } from '../components/StackedBar';
 import { OverviewSkeleton } from '../components/Skeletons';
 import { IconLayers, IconInbox, IconAlertTriangle, IconRefresh } from '../components/Icons';
 import { PriorityBadge, CategoryPill } from '../components/Badges';
-import { categoryLabel, statusLabel, priorityLabel } from '../taxonomy';
+import { categoryLabel, priorityLabel } from '../taxonomy';
 import { useCountUp } from '../hooks/useCountUp';
 import { usePeriodTrend } from '../hooks/usePeriodTrend';
 
@@ -28,21 +27,6 @@ import { usePeriodTrend } from '../hooks/usePeriodTrend';
 // silently drift out of sync with the sidebar's Urgent/New counts (visible
 // until the user navigated away and back) instead of just refreshing together.
 const STATS_REFRESH_MS = 60000;
-
-// WAITING_ON_CUSTOMER and IGNORED previously shared the same muted gray
-// (indistinguishable at a glance) — series-7 is validated CVD-safe against
-// its neighbors here (see scripts/validate_palette.js in the dataviz skill).
-const STATUS_COLORS = {
-  NEW: 'var(--series-1)',
-  IN_PROGRESS: 'var(--status-warning)',
-  WAITING_ON_CUSTOMER: 'var(--series-7)',
-  RESOLVED: 'var(--status-good)',
-  IGNORED: 'var(--text-muted)',
-  // Staff-initiated "Delete" from the Detail page — see the DISMISSED
-  // comment in backend/src/db/repository.js. series-4 validated CVD-safe
-  // against every other color in this set.
-  DISMISSED: 'var(--series-4)',
-};
 
 // A green -> amber -> red escalating-risk ramp, reading left to right as
 // "how overdue." The 1-3d step is a paler tint of the same good-green
@@ -71,7 +55,6 @@ function formatWeekStart(d) {
   return `Wk of ${new Date(`${d}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`;
 }
 
-const STATUS_ORDER = ['NEW', 'IN_PROGRESS', 'WAITING_ON_CUSTOMER', 'RESOLVED', 'IGNORED', 'DISMISSED'];
 const PRIORITY_ORDER = ['URGENT', 'HIGH', 'NORMAL', 'LOW'];
 
 const PERIOD_GRANULARITIES = [
@@ -184,25 +167,16 @@ export default function Overview() {
   const [error, setError] = useState(null);
   const [mailbox, setMailbox] = useState(null);
 
-  // One shared control drives resolution-time, first-response, and backlog
-  // — genuine trend-across-many-periods panels, where "how should this
-  // history be bucketed" is one real question worth answering once rather
-  // than three times (per dataviz's own filter guidance: "every chart,
-  // stat, and table re-renders against the same slice"). Status mix is
-  // NOT on this control (see statusGranularity below) — it's a
-  // snapshot-of-one-window question, not a trend-bucketing one, and tying
-  // it to the same control as the trend panels was a conceptual mismatch:
-  // nothing says "my resolution-time bucket size" and "which window
-  // status-mix looks at" should always move together. Volume also keeps
-  // its own separate toggle — it genuinely needs day/week granularity
-  // none of these offer.
-  const [globalGranularity, setGlobalGranularity] = useState('month');
-  // Defaults to quarter, not month — status mix is scoped to "received in
-  // the current period," so at month granularity it opens on a near-empty
-  // view for the first few days of every month. Quarter accumulates
-  // enough volume to rarely look blank on load; the toggle still lets an
-  // operator switch to month when they want the finer window.
-  const [statusGranularity, setStatusGranularity] = useState('quarter');
+  // Each of these three gets its own independent Month/Quarter/Year
+  // toggle — briefly consolidated into one shared control, then split
+  // back out: sharing one control meant clicking it re-rendered all three
+  // panels at once, making it impossible to compare a panel's "before" and
+  // "after" state while switching granularity (you'd lose sight of what
+  // the other panels looked like a moment ago). A per-card toggle costs a
+  // little more visual repetition but keeps that comparison possible.
+  const [resolutionGranularity, setResolutionGranularity] = useState('month');
+  const [firstResponseGranularity, setFirstResponseGranularity] = useState('month');
+  const [backlogGranularity, setBacklogGranularity] = useState('month');
   const [volumeGranularity, setVolumeGranularity] = useState('day');
   // Only meaningful (and only shown) at day granularity — see
   // ROLLING_AVG_DAYS above.
@@ -240,19 +214,16 @@ export default function Overview() {
     getIngestStatus().then((s) => setMailbox(s.mailbox)).catch(() => {});
   }, []);
 
-  // Four of these five period-toggle KPI panels now share globalGranularity
-  // (see above) — each still gets its own usePeriodTrend call (fetch +
-  // AbortController cleanup on change, see hooks/usePeriodTrend.js), just
-  // fed the same granularity value instead of each tracking its own.
+  // Each backed by its own usePeriodTrend call (fetch + AbortController
+  // cleanup on granularity change, see hooks/usePeriodTrend.js).
   // resolutionByPriority has no real granularity (an all-time snapshot,
   // not a period trend — see resolutionTimeByPriority in
   // db/repository.js), so it's called with a fixed 'all' key just to
   // reuse the same fetch/abort plumbing rather than duplicating it for
   // one const-value case.
-  const resolutionTrend = usePeriodTrend(getResolutionTrend, globalGranularity);
-  const firstResponseTrend = usePeriodTrend(getFirstResponseTrend, globalGranularity);
-  const backlogTrend = usePeriodTrend(getBacklogTrend, globalGranularity);
-  const statusTrend = usePeriodTrend(getStatusByPeriod, statusGranularity);
+  const resolutionTrend = usePeriodTrend(getResolutionTrend, resolutionGranularity);
+  const firstResponseTrend = usePeriodTrend(getFirstResponseTrend, firstResponseGranularity);
+  const backlogTrend = usePeriodTrend(getBacklogTrend, backlogGranularity);
   const volumeTrend = usePeriodTrend(getVolumeTrend, volumeGranularity);
   const priorityTrend = usePeriodTrend((_g, opts) => getResolutionByPriority(opts), 'all');
 
@@ -290,24 +261,6 @@ export default function Overview() {
     });
   }, [stats]);
 
-  // Segment order follows STATUS_ORDER (fixed, never re-sorted by value)
-  // so a status keeps the same position release over release — "color
-  // follows the entity, never its rank."
-  // Filters out zero-count statuses (rather than the fixed 6-entry shape
-  // StackedBar's own internal filter would otherwise leave TrendPanelBody
-  // seeing as "non-empty" even when literally every value is 0 — that
-  // mismatch previously rendered a blank panel with no message at all
-  // whenever a period had no enquiries of any status yet.
-  const statusStackedData = useMemo(() => {
-    if (!statusTrend.data) return [];
-    return STATUS_ORDER.map((key) => ({
-      key,
-      value: statusTrend.data.byStatus[key] || 0,
-      label: statusLabel(key),
-      color: STATUS_COLORS[key],
-    })).filter((s) => s.value > 0);
-  }, [statusTrend.data]);
-
   const facilityData = useMemo(() => {
     if (!stats) return [];
     return stats.byFacility.map((f) => ({ key: f.facility, value: f.count, label: f.facility }));
@@ -341,28 +294,28 @@ export default function Overview() {
       return {
         key: r.period,
         value: r.avgHours,
-        label: `${formatTrendPeriod(r.period, globalGranularity)} (${r.count} resolved${slaPct == null ? '' : ` · ${slaPct}% ≤${DEFAULT_SLA_HOURS}h`})`,
+        label: `${formatTrendPeriod(r.period, resolutionGranularity)} (${r.count} resolved${slaPct == null ? '' : ` · ${slaPct}% ≤${DEFAULT_SLA_HOURS}h`})`,
       };
     });
-  }, [resolutionTrend.data, globalGranularity]);
+  }, [resolutionTrend.data, resolutionGranularity]);
 
   const firstResponseTrendData = useMemo(() => {
     if (!firstResponseTrend.data) return [];
     return firstResponseTrend.data.map((r) => ({
       key: r.period,
       value: r.avgHours,
-      label: `${formatTrendPeriod(r.period, globalGranularity)} (${r.count} replied)`,
+      label: `${formatTrendPeriod(r.period, firstResponseGranularity)} (${r.count} replied)`,
     }));
-  }, [firstResponseTrend.data, globalGranularity]);
+  }, [firstResponseTrend.data, firstResponseGranularity]);
 
   const backlogTrendData = useMemo(() => {
     if (!backlogTrend.data) return [];
     return backlogTrend.data.map((r) => ({
       key: r.period,
       value: r.openAtEnd,
-      label: formatTrendPeriod(r.period, globalGranularity),
+      label: formatTrendPeriod(r.period, backlogGranularity),
     }));
-  }, [backlogTrend.data, globalGranularity]);
+  }, [backlogTrend.data, backlogGranularity]);
 
   // Raw by default; the 7-day rolling average (day granularity only)
   // replaces received/resolved with their smoothed equivalents rather than
@@ -472,14 +425,6 @@ export default function Overview() {
         )}
       </div>
 
-      <div className="panel-header-row overview-global-filter">
-        <span className="draft-hint" style={{ margin: 0 }}>
-          Reporting period (resolution time, first response, backlog, status mix)
-          {globalGranularity !== 'month' && ' — financial year, 1 Jul to 30 Jun'}
-        </span>
-        <GranularityToggle granularities={PERIOD_GRANULARITIES} value={globalGranularity} onChange={setGlobalGranularity} />
-      </div>
-
       <div className="stat-grid">
         <div className="stat-tile stat-tile-in" style={{ animationDelay: '0ms' }}>
           <div className="stat-tile-header">
@@ -570,7 +515,13 @@ export default function Overview() {
       </div>
 
       <div className="panel">
-        <h3>Avg. resolution time by {globalGranularity}</h3>
+        <div className="panel-header-row">
+          <h3>Avg. resolution time by {resolutionGranularity}</h3>
+          <GranularityToggle granularities={PERIOD_GRANULARITIES} value={resolutionGranularity} onChange={setResolutionGranularity} />
+        </div>
+        {resolutionGranularity !== 'month' && (
+          <p className="draft-hint" style={{ marginTop: 0, marginBottom: 10 }}>Financial year — 1 Jul to 30 Jun.</p>
+        )}
         <TrendPanelBody
           error={resolutionTrend.error}
           loading={resolutionTrend.loading}
@@ -595,7 +546,13 @@ export default function Overview() {
         </div>
 
         <div className="panel">
-          <h3>First response time by {globalGranularity}</h3>
+          <div className="panel-header-row">
+            <h3>First response time by {firstResponseGranularity}</h3>
+            <GranularityToggle granularities={PERIOD_GRANULARITIES} value={firstResponseGranularity} onChange={setFirstResponseGranularity} />
+          </div>
+          {firstResponseGranularity !== 'month' && (
+            <p className="draft-hint" style={{ marginTop: 0, marginBottom: 10 }}>Financial year — 1 Jul to 30 Jun.</p>
+          )}
           <TrendPanelBody
             error={firstResponseTrend.error}
             loading={firstResponseTrend.loading}
@@ -607,7 +564,13 @@ export default function Overview() {
         </div>
 
         <div className="panel">
-          <h3>Backlog (open at end of {globalGranularity})</h3>
+          <div className="panel-header-row">
+            <h3>Backlog (open at end of {backlogGranularity})</h3>
+            <GranularityToggle granularities={PERIOD_GRANULARITIES} value={backlogGranularity} onChange={setBacklogGranularity} />
+          </div>
+          {backlogGranularity !== 'month' && (
+            <p className="draft-hint" style={{ marginTop: 0, marginBottom: 10 }}>Financial year — 1 Jul to 30 Jun.</p>
+          )}
           <TrendPanelBody
             error={backlogTrend.error}
             loading={backlogTrend.loading}
@@ -632,21 +595,6 @@ export default function Overview() {
         <div className="panel">
           <h3>Enquiries by category{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
           <BarList data={categoryData} linkTo={(key) => `/queue?category=${encodeURIComponent(key)}`} />
-        </div>
-
-        <div className="panel">
-          <div className="panel-header-row">
-            <h3>Status mix, by {statusGranularity}</h3>
-            <GranularityToggle granularities={PERIOD_GRANULARITIES} value={statusGranularity} onChange={setStatusGranularity} />
-          </div>
-          <TrendPanelBody
-            error={statusTrend.error}
-            loading={statusTrend.loading}
-            data={statusStackedData}
-            emptyMessage={`No enquiries received this ${statusGranularity} yet.`}
-          >
-            <StackedBar data={statusStackedData} linkTo={(key) => `/queue?status=${encodeURIComponent(key)}`} />
-          </TrendPanelBody>
         </div>
       </div>
 

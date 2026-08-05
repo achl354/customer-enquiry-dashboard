@@ -693,17 +693,14 @@
   justify-content: center;
 }
 
-.panel .trend-chart {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-}
-
-.panel .trend-chart svg {
-  flex: 1;
-  height: auto;
-  min-height: 0;
-}
+/* .panel .trend-chart(-svg) stretch rules used to live here for the old
+   Daily/Weekly volume charts, back when they shared a .chart-grid row with
+   other panels — removed once Volume became its own standalone panel
+   (DualTrendChart isn't used inside any .chart-grid today). Left in place,
+   they silently won over .trend-chart svg's own height clamp and
+   .net-diff-chart svg's fixed height below (both less specific selectors),
+   nearly doubling the volume panel's actual rendered height with nothing
+   depending on the stretch behavior to justify it. */
 
 /* Same reasoning as .stat-grid's max-width — a single line of text (the
    oldest-enquiry banner) doesn't need to stretch edge-to-edge on a wide
@@ -849,7 +846,12 @@
 
 .trend-chart svg {
   width: 100%;
-  height: clamp(75px, 9vh, 130px);
+  /* Reduced from clamp(75px, 9vh, 130px) — the volume panel (the only
+     current user of this chart) was taking up too much vertical space,
+     compounded at the time by the .panel .trend-chart svg stretch bug
+     removed above (which pushed the *actual* rendered height to ~250px,
+     nearly double even the old clamp's own max). */
+  height: clamp(55px, 6vh, 95px);
   display: block;
   cursor: crosshair;
 }
@@ -864,7 +866,9 @@
 }
 
 .net-diff-chart svg {
-  height: 44px;
+  /* Reduced from 44px, same reasoning as .trend-chart svg above — also
+     hit by the same stretch bug (rendering at ~88px instead of this). */
+  height: 36px;
   cursor: pointer;
 }
 

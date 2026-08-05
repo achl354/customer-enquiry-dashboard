@@ -111,7 +111,7 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 | `GET /api/stats/first-response-trend?granularity=month\|quarter\|year` | Avg. time to first reply by period, all-time, forward-looking only (see "First response time") |
 | `GET /api/stats/resolution-by-priority` | Avg. resolution time per priority tier, all-time snapshot (no granularity) |
 | `GET /api/stats/backlog-trend?granularity=month\|quarter\|year` | Open-enquiry count at the end of each period — an approximation, see "Backlog trend" below |
-| `GET /api/stats/status-by-period?granularity=month\|quarter\|year` | Status mix of enquiries *received* in the current month/fiscal-quarter/fiscal-year — see "Status mix" in "KPI trend panels" below |
+| `GET /api/stats/status-by-period?granularity=month\|quarter\|year` | Status mix of enquiries *received* in the current month/fiscal-quarter/fiscal-year. No longer called by the frontend (the Overview panel using it was removed — see "Status mix (removed)" below) but left in place |
 | `GET /api/ingest/status` | Whether live Graph polling and AI classification are configured |
 | `POST /api/ingest/run` | Manually trigger one poll cycle (Inbox only) |
 | `GET /api/ingest/folder-map?mailbox=<address>` | CSV of every mail folder, walked by id — see "Folder tree enumeration" below |
@@ -441,23 +441,25 @@ trend/by-priority panels below) only average rows that actually have a
 after deploying this, until the backfill catches up) simply isn't counted
 in the average rather than guessed at.
 
-## KPI trend panels (`/stats/volume-trend`, `/stats/resolution-trend`, `/stats/first-response-trend`, `/stats/resolution-by-priority`, `/stats/backlog-trend`, `/stats/status-by-period`)
+## KPI trend panels (`/stats/volume-trend`, `/stats/resolution-trend`, `/stats/first-response-trend`, `/stats/resolution-by-priority`, `/stats/backlog-trend`)
 
-Six reporting panels on Overview, each backed by its own endpoint rather
+Five reporting panels on Overview, each backed by its own endpoint rather
 than bundled into `/stats/overview` — they're switched by a granularity
-control the operator drives, not something every page load needs.
+toggle the operator controls, not something every page load needs.
 
-**One global reporting-period control** (Month/Quarter/Year) drives three of
-these panels together — resolution-time, first-response, and backlog —
-rather than each carrying its own independent toggle, which is what this
-used to do. Consolidated per the dataviz reference this project follows
+**Each of Volume, Resolution time, First response, and Backlog keeps its
+own independent Month/Quarter/Year (or day/week/month/quarter for Volume)
+toggle.** These briefly shared one consolidated control instead — the
+dataviz reference this project generally follows argues for exactly that
 ("filters scope everything below them — every chart, stat, and table
-re-renders against the same slice"); three separate toggles for what's
-conceptually one question ("how should this trend be bucketed") was
-clutter, not flexibility. Volume and status-mix are the two deliberate
-exceptions, each keeping its own local control (see their own entries
-below) — a trend-across-many-periods question isn't the same question
-either of them is actually asking.
+re-renders against the same slice") — but in practice it broke a real
+workflow: switching the shared control re-rendered every panel driven by
+it at once, so there was no way to compare a panel's state before and
+after changing granularity, or to leave one panel on a different window
+than the others while checking something else. Reverted based on that
+concrete usability cost outweighing the guideline. There's also no longer
+a "status mix" panel to weigh into this (see below) — its removal is part
+of why per-panel toggles are the simpler call now anyway.
 
 `period` strings follow the same convention everywhere: `"YYYY-MM"` for
 month (calendar), `"YYYY-FQn"` for quarter, `"YYYY"` for year — the latter
@@ -468,10 +470,10 @@ two are **fiscal** (the AU financial year, 1 Jul – 30 Jun), not calendar.
 calendar dates instead.
 
 **Enquiry volume** (`/stats/volume-trend?granularity=day|week|month|quarter`,
-no year, its own local toggle) — received vs. resolved counts. Zero-filled
-from `TOTAL_SINCE` through now — scoped to that date the same way the
-by-category/status/priority/facility breakdowns are, since this is a
-volume figure. Two additions on top of the raw received/resolved lines:
+no year) — received vs. resolved counts. Zero-filled from `TOTAL_SINCE`
+through now — scoped to that date the same way the by-category/status/
+priority/facility breakdowns are, since this is a volume figure. Three
+additions on top of the raw received/resolved lines:
 - **Y-axis value labels** — three reference gridlines (0/half/max) with
   their numeric value, rather than an axis-less line (the hovered point
   is the only value directly labeled otherwise, so per dataviz's own
@@ -492,6 +494,18 @@ volume figure. Two additions on top of the raw received/resolved lines:
   negative and carries a different kind of meaning than a raw count, same
   "two measures of different scale → two charts" reasoning the Backlog
   panel already follows.
+
+**Chart height**: both the main volume chart and the net-diff strip were,
+for a while, rendering at nearly double their intended height (~250px
+instead of ~130px, ~88px instead of 44px) — a leftover CSS rule from the
+old grid-based Daily/Weekly volume charts (`.panel .trend-chart svg`,
+meant to stretch a chart to fill a shared `.chart-grid` row) had higher
+specificity than either chart's own height rule and silently won,
+even though nothing has used `.trend-chart` inside a `.chart-grid` since
+Volume became its own standalone panel. Removed that dead rule and
+reduced the target heights further on top of the fix (~55-95px main
+chart, 36px net-diff) — the panel was taking up too much vertical space
+even before accounting for the bug.
 
 **Avg. resolution time** (`/stats/resolution-trend?granularity=month|quarter|year&sla=<hours>`)
 — an SLA compliance rate alongside the average: `slaCompliantCount`/
@@ -535,45 +549,29 @@ graph/poller.js, the active repair pass that shrinks this gap over time).
 Accepted given the volume this affects is small, rather than adding a
 second closure-timestamp column for a KPI this workflow-adjacent.
 
-**Status mix** (`/stats/status-by-period?granularity=month|quarter|year`) —
-a stacked bar (`StackedBar.jsx`), not a donut: replaced the original
-"Enquiries by status" bar list with a donut chart first, then replaced
-that with a stacked bar once it was in front of real usage — per the
-dataviz reference this project follows, a stacked bar is the actual
-default for part-to-whole (donut is a deprioritized carve-out for a
-handful of segments), so this reverses that earlier call. Scoped to
-*enquiries received in* the current period rather than the all-time-since-
-`TOTAL_SINCE` snapshot the original bar list showed — "what's the status
-mix of what came in this month" is a more useful operational question than
-"since tracking began" (that all-time view is still reachable via the
-Queue page's own status filter).
+## Status mix (removed)
 
-**Its own local Month/Quarter/Year toggle, not the shared global one** —
-briefly shared it during the global-control consolidation above, then
-split it back out: status mix is a snapshot-of-one-window question ("what
-did this quarter look like"), not a trend-bucketing one, so there's no
-real reason it should have to move in lockstep with resolution-time/
-first-response/backlog's history-bucketing choice. **Defaults to quarter,
-not month** — scoped-to-current-period means the first few days of every
-month have almost nothing in them yet, and a panel that opens on an empty
-state on every page load reads as broken even when it's working exactly
-as designed; quarter accumulates enough volume to rarely look blank on
-load, while the toggle still lets an operator switch to month for the
-finer window.
+Overview briefly had a "Status mix" panel — first a donut, then a stacked
+bar, scoped to enquiries received in the current period. Removed after
+review: "Open enquiries by age" and "Backlog trend" already answer the
+"is stuff piling up, and for how long" question more directly, and status
+mix's own signal (what fraction of a period ended up New/Resolved/
+Ignored/etc.) added comparatively little on top of those. The backend
+endpoint (`/stats/status-by-period`) and `statusByPeriod()` in
+`db/repository.js` are left in place — they cost nothing to keep and could
+still be called directly if this turns out to be useful after all.
 
-Segment order follows a fixed status order, not sorted by value — "color
-follows the entity, never its rank." Every segment's count/share is
-always shown in the legend (never gated behind hover); hovering or
-focusing a segment additionally highlights it via a native `title`, no
-custom tooltip needed at this level of compactness.
-
-**"Open enquiries by age"** (the aging-bucket panel further down Overview,
-`agingBuckets` in `/stats/overview` — unchanged endpoint) now also renders
-as a `StackedBar` rather than a 4-row bar list, for the same reason: the
-0-24h/1-3d buckets are often empty or near-empty in practice (nothing
-fresh has piled up — genuinely good news, not a bug), which left visible
-dead space as separate bar rows. A stacked bar always fills its full
-width regardless of how lopsided the underlying buckets are.
+**"Open enquiries by age"** (the aging-bucket panel, `agingBuckets` in
+`/stats/overview` — unchanged endpoint) renders as a `StackedBar`
+(`StackedBar.jsx`, originally built for status mix, kept for this panel)
+rather than a 4-row bar list — the 0-24h/1-3d buckets are often empty or
+near-empty in practice (nothing fresh has piled up — genuinely good news,
+not a bug), which left visible dead space as separate bar rows. A stacked
+bar always fills its full width regardless of how lopsided the underlying
+buckets are. Per the dataviz reference this project follows, a stacked
+bar is also the more appropriate default for part-to-whole generally
+(donut is a deprioritized carve-out for a handful of segments) — the same
+reasoning that applied to status mix while it existed.
 
 ## Action queue
 
@@ -647,6 +645,19 @@ share of enquiries (since `TOTAL_SINCE`, same scope as `byFacility`) with a
 real facility name rather than falling into "Not attributed" — lets the
 above changes' actual impact be tracked over time instead of eyeballing
 the "Not attributed" bar's size.
+
+**If the "Not attributed" count still looks high after this** despite the
+above, check whether a historical backfill has actually been run since
+these changes shipped — see "These changes only affect classification
+going forward" above. On the dev sample used while building this, the
+gap was already down to genuinely-internal mail only (0% real gap) once
+the logic itself was verified directly, which suggests a persistently
+high count elsewhere is existing data that hasn't been reclassified yet,
+not a gap in the domain lists themselves. If a backfill doesn't move the
+number, exporting a facility/domain breakdown (the Queue page's CSV
+export) is the next step — that shows exactly which domains are still
+driving it, rather than guessing at more `KNOWN_ORG_DOMAINS` entries
+blind.
 
 ## Folder tree enumeration (`/folder-map`)
 

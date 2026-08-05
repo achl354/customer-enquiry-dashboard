@@ -387,9 +387,6 @@ export default function Overview() {
               </li>
             ))}
           </ul>
-          <p className="draft-hint" style={{ margin: '10px 0 0' }}>
-            Owner isn't shown — assignment tracking isn't a real feature yet (see the README).
-          </p>
         </div>
       )}
 
@@ -522,6 +519,13 @@ export default function Overview() {
             <BarList data={facilityData} />
           ) : (
             <p className="draft-hint" style={{ margin: 0 }}>No facility data yet.</p>
+          )}
+          {facilityData.some((f) => f.key === 'Not attributed') && (
+            <p className="draft-hint" style={{ margin: '10px 0 0' }}>
+              "Not attributed" = no customer organisation could be identified from the sender — personal/webmail
+              addresses (Gmail, Yahoo, Outlook.com, etc.), automated tooling senders, or internal staff, rather
+              than a recognized company domain.
+            </p>
           )}
         </div>
 

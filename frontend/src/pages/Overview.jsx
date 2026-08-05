@@ -417,12 +417,9 @@ export default function Overview() {
 
   return (
     <div className="overview-page">
-      {/* "Enquiry Watch" + the mailbox address now live permanently in the
-          sidebar (see App.jsx) rather than just on this one page — this
-          just needs its own page-level heading, same as All Enquiries'
-          "All enquiries" below. */}
-      <h2>Overview</h2>
-
+      {/* No page-level heading — "Enquiry Watch" + the mailbox address
+          already live permanently in the sidebar (see App.jsx), and the
+          stat tiles below make it obvious enough what this page is. */}
       <div className="stat-grid">
         <div className="stat-tile stat-tile-in" style={{ animationDelay: '0ms' }}>
           <div className="stat-tile-header">

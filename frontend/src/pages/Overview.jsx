@@ -635,6 +635,11 @@ export default function Overview() {
       <div className="panel">
         <div className="panel-header-row">
           <h3>Top facilities / organisations{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
+          {stats.facilityAttributionRate != null && (
+            <span className="draft-hint" style={{ margin: 0 }} title="Share of enquiries with a real facility name, not 'Not attributed' — see classify.js's KNOWN_ORG_DOMAINS/GENERIC_DOMAINS">
+              {Math.round(stats.facilityAttributionRate * 100)}% attributed
+            </span>
+          )}
         </div>
         {reclassifyResult && (
           <p className="draft-hint" style={{ marginTop: 0, marginBottom: 10 }}>

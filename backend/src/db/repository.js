@@ -916,6 +916,12 @@ function overviewStats() {
     byStatus: Object.fromEntries(byStatus.map((r) => [r.status, r.count])),
     byPriority: Object.fromEntries(byPriority.map((r) => [r.priority, r.count])),
     byFacility: byFacility.map((r) => ({ facility: r.facility, count: r.count })),
+    // What fraction of enquiries (since TOTAL_SINCE, same scope as
+    // byFacility) got a real facility name rather than falling into
+    // "Not attributed" — tracks whether expanding KNOWN_ORG_DOMAINS/
+    // GENERIC_DOMAINS in classify.js is actually moving the needle over
+    // time, rather than eyeballing the "Not attributed" bar's size.
+    facilityAttributionRate: total > 0 ? facilityAttributedCount / total : null,
     agingBuckets,
     oldestOpenQueue: oldestOpenQueue.map(rowToEnquiry),
     avgResolutionHours,

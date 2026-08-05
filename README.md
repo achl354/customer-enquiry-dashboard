@@ -105,7 +105,7 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 | `PATCH /api/enquiries/:id/category` | Manual recategorization (`status` has no direct-set endpoint at all — it's derived from Outlook, see "Status sync" below, with `DELETE` as the one dashboard-native exception) |
 | `DELETE /api/enquiries/:id` | Detail page's "Delete" — sets `DISMISSED`, doesn't touch the real mailbox |
 | `GET /api/enquiries/export` | CSV export — same filters as the list endpoint, no pagination. Lean reporting column set (no draft/body content) |
-| `GET /api/stats/overview` | Counts by category/status/priority/facility, aging buckets, open workload by assignee, avg resolution time and resolved count (returned for other callers/history's sake — Overview no longer shows these as standalone stat tiles; see "Resolution time by priority" and the resolution-trend panel instead) |
+| `GET /api/stats/overview` | Counts by category/status/priority/facility, `facilityAttributionRate` (see "Facility attribution" below), aging buckets, open workload by assignee, avg resolution time and resolved count (returned for other callers/history's sake — Overview no longer shows these as standalone stat tiles; see "Resolution time by priority" and the resolution-trend panel instead) |
 | `GET /api/stats/volume-trend?granularity=day\|week\|month\|quarter` | Received vs. resolved counts by period, since `TOTAL_SINCE` — see "KPI trend panels" below |
 | `GET /api/stats/resolution-trend?granularity=month\|quarter\|year&sla=<hours>` | Avg. resolution time + SLA compliance rate rolled up by period, all-time; `sla` defaults to 48 |
 | `GET /api/stats/first-response-trend?granularity=month\|quarter\|year` | Avg. time to first reply by period, all-time, forward-looking only (see "First response time") |
@@ -578,6 +578,54 @@ the cumulative figure is a direct label rather than a second scale.
 Deliberately doesn't highlight specific categories as "automation
 candidates" — which ones count as one is a real judgment call for whoever
 owns the queue, not something to guess at and bake in silently.
+
+## Facility attribution (`KNOWN_ORG_DOMAINS`, `GENERIC_DOMAINS`)
+
+`facility` (the customer/organisation an enquiry is attributed to) comes
+from `orgNameForDomain()` in `triage/classify.js`: an exact lookup against
+`KNOWN_ORG_DOMAINS` first, then falls back to title-casing the sender
+domain's first label (`bigpond.com` → `"Bigpond"`). That fallback handles
+most real company domains fine, but produces two kinds of bad output:
+
+- **A generic/consumer domain title-cased into a fake org name** —
+  `gmail.com` → `"Gmail"`, `messaging.microsoft.com` → `"Messaging"`.
+  `GENERIC_DOMAINS` now short-circuits these to `null` (unattributed)
+  instead — personal webmail and automated-tooling senders (a payment
+  gateway, a form-builder, an e-commerce platform, Microsoft's own
+  quarantine/messaging infrastructure) are never themselves "the
+  organisation this enquiry is about." Deliberately **not** the same list
+  as `KNOWN_SUPPLIER_DOMAINS`/`KNOWN_LOGISTICS_DOMAINS` (those exist for
+  category routing only) — `activtec.com.au` is documented elsewhere in
+  `classify.js` as sometimes acting as a genuine customer despite being on
+  the supplier list, so blanket-excluding "supplier/logistics" domains from
+  facility naming would misattribute exactly the case that comment warns
+  about. `GENERIC_DOMAINS` is limited to domains with no plausible
+  dual-role case.
+- **A subdomain of an already-known org falling through to its own ugly
+  fallback** — `oraclefusion.monashhealth.org` (an internal system at
+  Monash Health) used to title-case to `"Oraclefusion"` instead of
+  resolving to `"Monash Health"`. `orgNameForDomain()` now also checks
+  whether a domain *ends with* `.` + a known domain before falling back.
+
+`KNOWN_ORG_DOMAINS` itself was extended with the next tier of recurring
+senders identified from real ingested volume (`barwonhealth.org.au`,
+`stgeorgehospital.com.au`, `wecaresupportservices.net.au`,
+`fivegoodfriends.com.au`) — still deliberately conservative, not an
+attempt to map every domain seen.
+
+**These changes only affect classification going forward** (new mail, or
+anything explicitly reclassified via the historical backfill or the
+per-facility reclassify action) — they don't retroactively rewrite
+`facility` on enquiries already sitting in the database with the old
+fallback's output. Reclassify a facility from the Top facilities panel (or
+run a backfill) to see it applied to existing rows.
+
+**Attribution-rate KPI**: `facilityAttributionRate` in `/stats/overview`
+(shown next to "Top facilities / organisations" as "N% attributed") is the
+share of enquiries (since `TOTAL_SINCE`, same scope as `byFacility`) with a
+real facility name rather than falling into "Not attributed" — lets the
+above changes' actual impact be tracked over time instead of eyeballing
+the "Not attributed" bar's size.
 
 ## Folder tree enumeration (`/folder-map`)
 

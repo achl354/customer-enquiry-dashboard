@@ -22,7 +22,11 @@ const PRIORITIES = ['URGENT', 'HIGH', 'NORMAL', 'LOW'];
 // Known health-department / institutional buyer domains -> friendly org name.
 // Kept to the highest-volume senders seen across a 350+ email sample — the
 // domain-derived title-case fallback in orgNameForDomain() handles the long
-// tail reasonably, so this list is deliberately not exhaustive.
+// tail reasonably, so this list is deliberately not exhaustive. Extended
+// 2026-08 with the next tier of recurring senders identified from actual
+// ingested volume (see the dashboard's facility-attribution follow-up) —
+// deliberately conservative: only domains a real institutional/customer org
+// clearly owns, not a guess at every unmapped domain seen.
 const KNOWN_ORG_DOMAINS = {
   'health.nsw.gov.au': 'NSW Health',
   'health.sa.gov.au': 'SA Health',
@@ -46,13 +50,43 @@ const KNOWN_ORG_DOMAINS = {
   'easternhealth.org.au': 'Eastern Health',
   'petermac.org': 'Peter Mac',
   'sjog.org.au': "St John of God Health Care",
+  'barwonhealth.org.au': 'Barwon Health',
+  'stgeorgehospital.com.au': 'St George Hospital',
+  'wecaresupportservices.net.au': 'We Care Support Services',
+  'fivegoodfriends.com.au': 'Five Good Friends',
 };
 
 const KNOWN_SUPPLIER_DOMAINS = ['aneticaid.com', 'activtec.com.au', 'servicemed.com.au'];
 
-const KNOWN_LOGISTICS_DOMAINS = ['steadfastlogistics.com.au', 'packsend.com.au', 'tnt.com.au', 'fedex.com'];
+// dsv.com added alongside the two couriers already here — a global freight
+// forwarder, same reason tnt.com.au/fedex.com are on this list: category
+// routing (LOGISTICS_FREIGHT), not facility naming — see the comment on
+// GENERIC_DOMAINS below for why this list is deliberately NOT also excluded
+// from facility attribution.
+const KNOWN_LOGISTICS_DOMAINS = ['steadfastlogistics.com.au', 'packsend.com.au', 'tnt.com.au', 'fedex.com', 'dsv.com'];
 
 const KNOWN_NOISE_SENDERS = ['quarantine@messaging.microsoft.com', 'learntocare.com.au'];
+
+// Domains that should never be attributed as a customer "facility" — a
+// personal webmail address or a SaaS tool's automated-notification sender
+// isn't an organisation, so title-casing it (orgNameForDomain's fallback)
+// previously produced a fake org name ("Gmail", "Bigcommerce") that just
+// added noise to the Top facilities ranking. Deliberately NOT the same list
+// as KNOWN_SUPPLIER_DOMAINS/KNOWN_LOGISTICS_DOMAINS above — those exist for
+// category routing only, and at least one of them (activtec.com.au) is
+// documented elsewhere in this file as sometimes acting as a genuine
+// customer too, so blanket-excluding "supplier/logistics" domains from
+// facility naming would misattribute exactly the case that comment warns
+// about. This list is limited to domains with no plausible dual-role case:
+// generic consumer webmail, and automated-tooling senders (a payment
+// gateway, a form-builder, an e-commerce platform, Microsoft's own
+// quarantine/messaging infrastructure) that are never themselves "the
+// organisation this enquiry is about."
+const GENERIC_DOMAINS = new Set([
+  'gmail.com', 'yahoo.com', 'yahoo.com.au', 'hotmail.com', 'outlook.com', 'live.com',
+  'bigpond.com', 'icloud.com', 'aol.com', 'protonmail.com',
+  'messaging.microsoft.com', 'wpforms.com', 'bigcommerce.com', 'qvalent.com',
+]);
 
 // City tag in "[CITY] Enquiry from JD Healthcare Group Website" subjects ->
 // which region gets forwarded a website/sales-lead enquiry. Deliberately NOT
@@ -151,6 +185,14 @@ function domainOf(email) {
 
 function orgNameForDomain(domain) {
   if (KNOWN_ORG_DOMAINS[domain]) return KNOWN_ORG_DOMAINS[domain];
+  if (GENERIC_DOMAINS.has(domain)) return null;
+  // A subdomain of an already-known org (e.g. an internal system sending as
+  // oraclefusion.monashhealth.org) previously fell straight through to the
+  // title-case fallback below and got labeled "Oraclefusion" instead of
+  // resolving to the same parent org — checked before the fallback so it
+  // still resolves correctly.
+  const knownParent = Object.keys(KNOWN_ORG_DOMAINS).find((known) => domain.endsWith(`.${known}`));
+  if (knownParent) return KNOWN_ORG_DOMAINS[knownParent];
   // domain.split('.') is never [] (even '' splits to ['']), so there's
   // always a parts[0] to title-case.
   const parts = domain.split('.');

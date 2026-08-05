@@ -398,13 +398,6 @@ export default function Overview() {
   if (error) return <div className="error-state">Failed to load stats: {error}</div>;
   if (!stats) return <OverviewSkeleton />;
 
-  const weeklyDelta = stats.last7Days - stats.prev7Days;
-  const trendDirection = weeklyDelta > 0 ? 'up' : weeklyDelta < 0 ? 'down' : 'flat';
-  const trendText =
-    weeklyDelta === 0
-      ? 'same as last week'
-      : `${weeklyDelta > 0 ? '+' : ''}${weeklyDelta} vs last week`;
-
   // "Total enquiries" counts from a fixed reporting start date (backend
   // constant, not the mailbox's actual first-ever message) — without a
   // caption showing that date it reads as if it might be a weekly/monthly
@@ -431,10 +424,7 @@ export default function Overview() {
             <IconLayers className="stat-icon" />
             <div className="label">Total enquiries</div>
           </div>
-          <div className="value-row">
-            <div className="value">{totalDisplay}</div>
-            <div className={`trend ${trendDirection}`}>{trendText}</div>
-          </div>
+          <div className="value">{totalDisplay}</div>
           {sinceDate && <div className="draft-hint">Since {sinceDate}</div>}
         </div>
         <div className="stat-tile stat-tile-in" style={{ animationDelay: '60ms' }}>

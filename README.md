@@ -112,6 +112,7 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 | `GET /api/stats/resolution-by-priority` | Avg. resolution time per priority tier, all-time snapshot (no granularity) |
 | `GET /api/stats/backlog-trend?granularity=month\|quarter\|year` | Open-enquiry count at the end of each period — an approximation, see "Backlog trend" below |
 | `GET /api/stats/status-by-period?granularity=month\|quarter\|year` | Status mix of enquiries *received* in the current month/fiscal-quarter/fiscal-year. No longer called by the frontend (the Overview panel using it was removed — see "Status mix (removed)" below) but left in place |
+| `GET /api/stats/unattributed-domains` | Diagnostic, not part of the Overview UI — sender domains behind the "Not attributed" bucket, ranked by count, for recalibrating `KNOWN_ORG_DOMAINS`/`GENERIC_DOMAINS` — see "Facility attribution" below |
 | `GET /api/ingest/status` | Whether live Graph polling and AI classification are configured |
 | `POST /api/ingest/run` | Manually trigger one poll cycle (Inbox only) |
 | `GET /api/ingest/folder-map?mailbox=<address>` | CSV of every mail folder, walked by id — see "Folder tree enumeration" below |
@@ -441,6 +442,22 @@ trend/by-priority panels below) only average rows that actually have a
 after deploying this, until the backfill catches up) simply isn't counted
 in the average rather than guessed at.
 
+## Total enquiries (`stats.total`)
+
+The "Total enquiries" tile is a plain count since `TOTAL_SINCE` — no
+trend indicator underneath it. It briefly showed a "+X vs last week"
+delta (`last7Days` minus `prev7Days`, both simple rolling 7-day counts
+computed in `overviewStats()`), but a single week-over-week delta on raw
+enquiry volume is noisy — inbound volume varies with things like public
+holidays and mailbox migrations, not just genuine demand shifts — and
+having it sit right under the headline count read as more meaningful
+than it was. It's been removed from the tile. The backend still returns
+`last7Days`/`prev7Days` in `/api/stats/overview` (unused by the frontend
+now) rather than being torn out, in case a better-considered version of
+a period-over-period comparison — e.g. as part of the Volume trend panel,
+where it'd sit next to the actual trend line instead of standing alone —
+is worth building later.
+
 ## KPI trend panels (`/stats/volume-trend`, `/stats/resolution-trend`, `/stats/first-response-trend`, `/stats/resolution-by-priority`, `/stats/backlog-trend`)
 
 Five reporting panels on Overview, each backed by its own endpoint rather
@@ -653,11 +670,18 @@ going forward" above. On the dev sample used while building this, the
 gap was already down to genuinely-internal mail only (0% real gap) once
 the logic itself was verified directly, which suggests a persistently
 high count elsewhere is existing data that hasn't been reclassified yet,
-not a gap in the domain lists themselves. If a backfill doesn't move the
-number, exporting a facility/domain breakdown (the Queue page's CSV
-export) is the next step — that shows exactly which domains are still
-driving it, rather than guessing at more `KNOWN_ORG_DOMAINS` entries
-blind.
+not a gap in the domain lists themselves.
+
+**Recalibration diagnostic**: `GET /api/stats/unattributed-domains` — not
+part of the Overview UI, visited directly — returns the actual sender
+domains behind "Not attributed," grouped and ranked by count (same
+`TOTAL_SINCE` scope as `byFacility`/the "Not attributed" bucket itself, so
+the counts sum to match). Turns a single opaque number into a concrete,
+actionable list: whichever domains show up at the top are the ones worth
+adding to `KNOWN_ORG_DOMAINS` (a real customer/institutional org) or
+`GENERIC_DOMAINS` (consumer webmail / automated tooling, no genuine
+org) — recalibrating against real ranked volume instead of guessing at
+domains that might not even be significant.
 
 ## Folder tree enumeration (`/folder-map`)
 

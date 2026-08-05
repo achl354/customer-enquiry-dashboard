@@ -77,4 +77,13 @@ router.get('/status-by-period', (req, res) => {
   res.json(repo.statusByPeriod(granularity));
 });
 
+// Diagnostic, not part of the Overview UI — the sender domains behind the
+// "Not attributed" bucket, ranked by volume, so KNOWN_ORG_DOMAINS/
+// GENERIC_DOMAINS in triage/classify.js can be recalibrated against real
+// data instead of guessing. Visit directly (e.g. in a browser) when the
+// "Not attributed" count looks high.
+router.get('/unattributed-domains', (req, res) => {
+  res.json(repo.unattributedDomains());
+});
+
 module.exports = router;

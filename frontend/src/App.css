@@ -547,12 +547,6 @@
   letter-spacing: 0.06em;
 }
 
-.stat-tile .value-row {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
 .stat-tile .value {
   /* Proportional figures, not tabular — tabular-nums pads every digit to
      the width of a "0", which looks loose on a big standalone number like
@@ -567,16 +561,6 @@
 .stat-tile .value.critical {
   color: var(--status-critical);
 }
-
-.stat-tile .trend {
-  font-size: 12.5px;
-  font-weight: 600;
-  white-space: nowrap;
-}
-
-.stat-tile .trend.up { color: var(--accent-gold); }
-.stat-tile .trend.down { color: var(--text-muted); }
-.stat-tile .trend.flat { color: var(--text-muted); }
 
 .stat-tile .draft-hint {
   margin-top: 6px;

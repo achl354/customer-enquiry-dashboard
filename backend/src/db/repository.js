@@ -752,6 +752,24 @@ const byFacilityStmt = db.prepare(
 const facilityAttributedCountStmt = db.prepare(
   `SELECT COUNT(*) as c FROM enquiries WHERE facility IS NOT NULL AND facility != '' AND received_at >= '${TOTAL_SINCE}'`
 );
+
+// Diagnostic for recalibrating KNOWN_ORG_DOMAINS/GENERIC_DOMAINS in
+// classify.js — the "Not attributed" bucket on Overview is a single
+// number with nothing to act on directly. This breaks it down by the
+// actual sender domain behind it, so expanding those lists can be done
+// against real, ranked volume instead of guessing. Same TOTAL_SINCE scope
+// as byFacilityStmt/facilityAttributedCountStmt above, so this sums to
+// the same "Not attributed" count shown in the UI. No LIMIT — the whole
+// point is completeness for recalibration, not a chart-sized top-N.
+const unattributedDomainsStmt = db.prepare(
+  `SELECT sender_domain, COUNT(*) as count FROM enquiries
+   WHERE (facility IS NULL OR facility = '') AND received_at >= '${TOTAL_SINCE}'
+   GROUP BY sender_domain ORDER BY count DESC`
+);
+
+function unattributedDomains() {
+  return unattributedDomainsStmt.all();
+}
 const agingRowsStmt = db.prepare(
   `SELECT
      CASE
@@ -958,4 +976,5 @@ module.exports = {
   backlogTrend,
   volumeTrend,
   statusByPeriod,
+  unattributedDomains,
 };

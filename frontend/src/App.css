@@ -1226,10 +1226,22 @@
 
 .panel-toggle {
   display: inline-flex;
+  /* flex-wrap here (not on .panel-header-row's h3+controls line, which
+     already wraps) — lets the group itself wrap onto a second row rather
+     than either squeezing its buttons illegible or overflowing off the
+     panel. Only actually matters for the volume panel's 4-option toggle
+     (the widest one on the page) on narrow phones; every other
+     (3-option) toggle already fits on one line with room to spare.
+     flex-shrink is deliberately NOT 0 (unlike .panel-toggle-btn, whose
+     own text must never wrap) — this box needs to be shrinkable so the
+     wrap above actually triggers instead of the box just rendering at
+     its full one-line width regardless of available space; min-width: 0
+     removes the shrink floor flex would otherwise put here by default. */
+  flex-wrap: wrap;
+  min-width: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
-  flex-shrink: 0;
 }
 
 .panel-toggle-btn {
@@ -1240,6 +1252,13 @@
   font-size: 12.5px;
   font-weight: 600;
   cursor: pointer;
+  /* Without this, a standalone toggle button (e.g. the volume panel's
+     "7d avg", which sits outside any .panel-toggle group) shrinks and
+     wraps its own text onto two lines under flex pressure, instead of
+     the button wrapping as a whole onto its own line (see the volume
+     panel's header row in Overview.jsx, which now sets flex-wrap: wrap
+     specifically so that whole-button wrap is what actually happens). */
+  white-space: nowrap;
   transition: background 0.15s ease, color 0.15s ease;
 }
 

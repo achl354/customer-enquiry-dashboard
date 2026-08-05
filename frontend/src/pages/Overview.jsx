@@ -490,7 +490,12 @@ export default function Overview() {
       <div className="panel">
         <div className="panel-header-row">
           <h3>Enquiry volume: received vs. resolved by {volumeGranularity}</h3>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          {/* minWidth: 0 overrides the flex default (min-width: auto),
+              which floors this at its content's unwrapped width and would
+              otherwise let it hang off the panel's right edge instead of
+              actually wrapping internally — same fix as .main's own
+              min-width: 0 in App.css, one level deeper. */}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', justifyContent: 'flex-end', minWidth: 0 }}>
             {volumeGranularity === 'day' && (
               <button
                 type="button"

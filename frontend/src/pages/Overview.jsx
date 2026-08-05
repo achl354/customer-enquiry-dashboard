@@ -429,31 +429,33 @@ export default function Overview() {
         </TrendPanelBody>
       </div>
 
-      <div className="panel">
-        <div className="panel-header-row">
-          <h3>Avg. resolution time by {resolutionGranularity}</h3>
-          <GranularityToggle granularities={PERIOD_GRANULARITIES} value={resolutionGranularity} onChange={setResolutionGranularity} />
+      <div className="chart-grid">
+        <div className="panel">
+          <div className="panel-header-row">
+            <h3>Avg. resolution time by {resolutionGranularity}</h3>
+            <GranularityToggle granularities={PERIOD_GRANULARITIES} value={resolutionGranularity} onChange={setResolutionGranularity} />
+          </div>
+          {resolutionGranularity !== 'month' && (
+            <p className="draft-hint" style={{ marginTop: 0, marginBottom: 10 }}>Financial year — 1 Jul to 30 Jun.</p>
+          )}
+          <TrendPanelBody
+            error={resolutionTrend.error}
+            loading={resolutionTrend.loading}
+            data={resolutionTrendData}
+            emptyMessage="No resolved enquiries with known resolution time yet."
+          >
+            <BarList data={resolutionTrendData} format={(h) => `${h.toFixed(1)}h`} />
+          </TrendPanelBody>
         </div>
-        {resolutionGranularity !== 'month' && (
-          <p className="draft-hint" style={{ marginTop: 0, marginBottom: 10 }}>Financial year — 1 Jul to 30 Jun.</p>
-        )}
-        <TrendPanelBody
-          error={resolutionTrend.error}
-          loading={resolutionTrend.loading}
-          data={resolutionTrendData}
-          emptyMessage="No resolved enquiries with known resolution time yet."
-        >
-          <BarList data={resolutionTrendData} format={(h) => `${h.toFixed(1)}h`} />
-        </TrendPanelBody>
-      </div>
 
-      <div className="panel">
-        <h3>Open enquiries by age</h3>
-        {agingData.some((b) => b.value > 0) ? (
-          <StackedBar data={agingData} />
-        ) : (
-          <p className="draft-hint" style={{ margin: 0 }}>No open enquiries.</p>
-        )}
+        <div className="panel">
+          <h3>Open enquiries by age</h3>
+          {agingData.some((b) => b.value > 0) ? (
+            <StackedBar data={agingData} />
+          ) : (
+            <p className="draft-hint" style={{ margin: 0 }}>No open enquiries.</p>
+          )}
+        </div>
       </div>
 
       <div className="chart-grid">

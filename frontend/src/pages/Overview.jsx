@@ -179,6 +179,34 @@ function GranularityToggle({ granularities, value, onChange }) {
   );
 }
 
+// Shared row markup for both Action queue groups (New & urgent / Longest
+// waiting) — same shape, just a different `items` array and a different
+// reason for being listed (conveyed by the group's own label above it,
+// not by anything on the row itself).
+function ActionQueueRows({ items }) {
+  return (
+    <ul className="action-queue">
+      {items.map((e) => (
+        <li key={e.id} className="action-queue-item">
+          <div className="action-queue-row">
+            <span className="action-queue-age">{e.age}</span>
+            <PriorityBadge priority={e.priority} />
+            <CategoryPill category={e.category} />
+            <Link to={`/enquiries/${e.id}`} className="action-queue-subject">{e.subject}</Link>
+            <span className="action-queue-sender">{e.sender.email}</span>
+          </div>
+          {e.statusNote && (
+            <div className="action-queue-note" title={e.statusNote}>
+              <IconNote className="action-queue-note-icon" />
+              <span>{e.statusNote}</span>
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function Overview() {
   const [stats, setStats] = useState(null);
   const [error, setError] = useState(null);
@@ -292,6 +320,15 @@ export default function Overview() {
   // whether *any* row in the queue is overdue.
   const actionQueueOverdue = actionQueueData.length > 0
     && (Date.now() - new Date(actionQueueData[0].receivedAt).getTime()) > DEFAULT_SLA_HOURS * 60 * 60 * 1000;
+
+  // Second Action queue group — a just-arrived Urgent enquiry has no way
+  // to land in actionQueueData above (it's never one of the oldest-open),
+  // so without this it could sit unnoticed until it aged into that list.
+  // See recentUrgentQueue in db/repository.js for the 24h window/dedup.
+  const recentUrgentQueueData = useMemo(() => {
+    if (!stats) return [];
+    return stats.recentUrgentQueue.map((e) => ({ ...e, age: formatAge(e.receivedAt) }));
+  }, [stats]);
 
   // count (and, for resolution time, SLA compliance) folded into the label
   // rather than a second BarList series, since they're on a completely
@@ -569,28 +606,21 @@ export default function Overview() {
         </div>
       </div>
 
-      {actionQueueData.length > 0 && (
+      {(actionQueueData.length > 0 || recentUrgentQueueData.length > 0) && (
         <div className={`panel${actionQueueOverdue ? ' panel-accent-critical' : ''}`}>
-          <h3>Action queue — longest waiting, still open</h3>
-          <ul className="action-queue">
-            {actionQueueData.map((e) => (
-              <li key={e.id} className="action-queue-item">
-                <div className="action-queue-row">
-                  <span className="action-queue-age">{e.age}</span>
-                  <PriorityBadge priority={e.priority} />
-                  <CategoryPill category={e.category} />
-                  <Link to={`/enquiries/${e.id}`} className="action-queue-subject">{e.subject}</Link>
-                  <span className="action-queue-sender">{e.sender.email}</span>
-                </div>
-                {e.statusNote && (
-                  <div className="action-queue-note" title={e.statusNote}>
-                    <IconNote className="action-queue-note-icon" />
-                    <span>{e.statusNote}</span>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
+          <h3>Action queue</h3>
+          {recentUrgentQueueData.length > 0 && (
+            <>
+              <div className="action-queue-group-label">New &amp; urgent — received in the last 24h</div>
+              <ActionQueueRows items={recentUrgentQueueData} />
+            </>
+          )}
+          {actionQueueData.length > 0 && (
+            <>
+              <div className="action-queue-group-label">Longest waiting, still open</div>
+              <ActionQueueRows items={actionQueueData} />
+            </>
+          )}
         </div>
       )}
 

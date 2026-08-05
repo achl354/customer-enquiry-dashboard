@@ -387,11 +387,27 @@
    an existing chart component into a shape it wasn't built for. */
 .action-queue {
   list-style: none;
-  margin: 0;
+  margin: 0 0 16px;
   padding: 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.action-queue:last-child {
+  margin-bottom: 0;
+}
+
+/* Sub-heading for each of the Action queue's two groups (New & urgent /
+   Longest waiting) — smaller and quieter than the panel's own <h3>, since
+   it's a second-level label, not another heading competing with it. */
+.action-queue-group-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+  margin: 0 0 8px;
 }
 
 /* Border/padding live on the <li> (.action-queue-item), not the inner row,

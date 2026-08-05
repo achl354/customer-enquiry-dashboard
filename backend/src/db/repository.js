@@ -529,6 +529,23 @@ const OLDEST_OPEN_QUEUE_SIZE = 5;
 const oldestOpenQueueStmt = db.prepare(
   `SELECT * FROM enquiries WHERE status NOT IN (${CLOSED_STATUS_SQL}) ORDER BY received_at ASC LIMIT ${OLDEST_OPEN_QUEUE_SIZE}`
 );
+// Second Action queue group — a just-arrived Urgent enquiry has no way to
+// show up in oldestOpenQueue above (it's never one of the oldest-open by
+// definition), so without this it could sit unnoticed until it aged into
+// that list. "Recent" means actually recent — 24h — not just "whatever's
+// newest," so this shows nothing rather than reaching back further to
+// force a full 5 rows. Fetches a few extra past RECENT_URGENT_QUEUE_SIZE
+// so overviewStats() can drop any overlap with oldestOpenQueue (only
+// possible when there are very few open enquiries total) and still have
+// enough left to fill the real limit.
+const RECENT_URGENT_QUEUE_SIZE = 5;
+const RECENT_URGENT_WINDOW_HOURS = 24;
+const recentUrgentQueueStmt = db.prepare(
+  `SELECT * FROM enquiries
+   WHERE priority = 'URGENT' AND status NOT IN (${CLOSED_STATUS_SQL})
+     AND received_at >= datetime('now', '-${RECENT_URGENT_WINDOW_HOURS} hours')
+   ORDER BY received_at DESC LIMIT ${RECENT_URGENT_QUEUE_SIZE + OLDEST_OPEN_QUEUE_SIZE}`
+);
 const urgentOpenStmt = db.prepare(
   `SELECT COUNT(*) as c FROM enquiries WHERE priority = 'URGENT' AND status NOT IN (${CLOSED_STATUS_SQL})`
 );
@@ -953,6 +970,13 @@ function overviewStats() {
 
   const openCount = openCountStmt.get().c;
   const oldestOpenQueue = oldestOpenQueueStmt.all();
+  // See recentUrgentQueueStmt above re: the overlap/extra-fetch — drop
+  // anything already in oldestOpenQueue, then cap at the real limit.
+  const oldestOpenQueueIds = new Set(oldestOpenQueue.map((r) => r.id));
+  const recentUrgentQueue = recentUrgentQueueStmt
+    .all()
+    .filter((r) => !oldestOpenQueueIds.has(r.id))
+    .slice(0, RECENT_URGENT_QUEUE_SIZE);
   const urgentOpen = urgentOpenStmt.get().c;
   const total = totalStmt.get().c;
   const totalResolvedAllTime = totalResolvedAllTimeStmt.get().c;
@@ -1002,6 +1026,7 @@ function overviewStats() {
     facilityAttributionRate: total > 0 ? facilityAttributedCount / total : null,
     agingBuckets,
     oldestOpenQueue: oldestOpenQueue.map(rowToEnquiry),
+    recentUrgentQueue: recentUrgentQueue.map(rowToEnquiry),
     avgResolutionHours,
     resolvedCount: resolutionStats.count,
     totalResolvedAllTime,

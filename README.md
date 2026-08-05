@@ -447,16 +447,17 @@ Six reporting panels on Overview, each backed by its own endpoint rather
 than bundled into `/stats/overview` — they're switched by a granularity
 control the operator drives, not something every page load needs.
 
-**One global reporting-period control** (Month/Quarter/Year) drives four of
-them together — resolution-time, first-response, backlog, and status-mix
-— rather than each carrying its own independent toggle, which is what this
+**One global reporting-period control** (Month/Quarter/Year) drives three of
+these panels together — resolution-time, first-response, and backlog —
+rather than each carrying its own independent toggle, which is what this
 used to do. Consolidated per the dataviz reference this project follows
 ("filters scope everything below them — every chart, stat, and table
-re-renders against the same slice"); four separate toggles for what's
-conceptually one question ("which period am I looking at") was clutter,
-not flexibility. Volume is the one deliberate exception, kept as its own
-local control below — it genuinely needs day/week granularity none of the
-other four expose.
+re-renders against the same slice"); three separate toggles for what's
+conceptually one question ("how should this trend be bucketed") was
+clutter, not flexibility. Volume and status-mix are the two deliberate
+exceptions, each keeping its own local control (see their own entries
+below) — a trend-across-many-periods question isn't the same question
+either of them is actually asking.
 
 `period` strings follow the same convention everywhere: `"YYYY-MM"` for
 month (calendar), `"YYYY-FQn"` for quarter, `"YYYY"` for year — the latter
@@ -545,14 +546,34 @@ handful of segments), so this reverses that earlier call. Scoped to
 `TOTAL_SINCE` snapshot the original bar list showed — "what's the status
 mix of what came in this month" is a more useful operational question than
 "since tracking began" (that all-time view is still reachable via the
-Queue page's own status filter). Shares the same global month/quarter/year
-control as the three panels above it (a separate day option existed
-briefly and was dropped in that consolidation — see the global control
-note above). Segment order follows a fixed status order, not sorted by
-value — "color follows the entity, never its rank." Every segment's
-count/share is always shown in the legend (never gated behind hover);
-hovering or focusing a segment additionally highlights it via a native
-`title`, no custom tooltip needed at this level of compactness.
+Queue page's own status filter).
+
+**Its own local Month/Quarter/Year toggle, not the shared global one** —
+briefly shared it during the global-control consolidation above, then
+split it back out: status mix is a snapshot-of-one-window question ("what
+did this quarter look like"), not a trend-bucketing one, so there's no
+real reason it should have to move in lockstep with resolution-time/
+first-response/backlog's history-bucketing choice. **Defaults to quarter,
+not month** — scoped-to-current-period means the first few days of every
+month have almost nothing in them yet, and a panel that opens on an empty
+state on every page load reads as broken even when it's working exactly
+as designed; quarter accumulates enough volume to rarely look blank on
+load, while the toggle still lets an operator switch to month for the
+finer window.
+
+Segment order follows a fixed status order, not sorted by value — "color
+follows the entity, never its rank." Every segment's count/share is
+always shown in the legend (never gated behind hover); hovering or
+focusing a segment additionally highlights it via a native `title`, no
+custom tooltip needed at this level of compactness.
+
+**"Open enquiries by age"** (the aging-bucket panel further down Overview,
+`agingBuckets` in `/stats/overview` — unchanged endpoint) now also renders
+as a `StackedBar` rather than a 4-row bar list, for the same reason: the
+0-24h/1-3d buckets are often empty or near-empty in practice (nothing
+fresh has piled up — genuinely good news, not a bug), which left visible
+dead space as separate bar rows. A stacked bar always fills its full
+width regardless of how lopsided the underlying buckets are.
 
 ## Action queue
 

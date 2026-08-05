@@ -184,14 +184,25 @@ export default function Overview() {
   const [error, setError] = useState(null);
   const [mailbox, setMailbox] = useState(null);
 
-  // One shared control drives resolution-time, first-response, backlog,
-  // and status-mix — they previously each had their own independent
-  // Month/Quarter/Year toggle, which was more inconsistent clutter than
-  // it was worth (per dataviz's own filter guidance: "every chart, stat,
-  // and table re-renders against the same slice"). Volume keeps its own
-  // separate toggle below — it genuinely needs day/week granularity the
-  // others don't offer, the one deliberate exception.
+  // One shared control drives resolution-time, first-response, and backlog
+  // — genuine trend-across-many-periods panels, where "how should this
+  // history be bucketed" is one real question worth answering once rather
+  // than three times (per dataviz's own filter guidance: "every chart,
+  // stat, and table re-renders against the same slice"). Status mix is
+  // NOT on this control (see statusGranularity below) — it's a
+  // snapshot-of-one-window question, not a trend-bucketing one, and tying
+  // it to the same control as the trend panels was a conceptual mismatch:
+  // nothing says "my resolution-time bucket size" and "which window
+  // status-mix looks at" should always move together. Volume also keeps
+  // its own separate toggle — it genuinely needs day/week granularity
+  // none of these offer.
   const [globalGranularity, setGlobalGranularity] = useState('month');
+  // Defaults to quarter, not month — status mix is scoped to "received in
+  // the current period," so at month granularity it opens on a near-empty
+  // view for the first few days of every month. Quarter accumulates
+  // enough volume to rarely look blank on load; the toggle still lets an
+  // operator switch to month when they want the finer window.
+  const [statusGranularity, setStatusGranularity] = useState('quarter');
   const [volumeGranularity, setVolumeGranularity] = useState('day');
   // Only meaningful (and only shown) at day granularity — see
   // ROLLING_AVG_DAYS above.
@@ -241,7 +252,7 @@ export default function Overview() {
   const resolutionTrend = usePeriodTrend(getResolutionTrend, globalGranularity);
   const firstResponseTrend = usePeriodTrend(getFirstResponseTrend, globalGranularity);
   const backlogTrend = usePeriodTrend(getBacklogTrend, globalGranularity);
-  const statusTrend = usePeriodTrend(getStatusByPeriod, globalGranularity);
+  const statusTrend = usePeriodTrend(getStatusByPeriod, statusGranularity);
   const volumeTrend = usePeriodTrend(getVolumeTrend, volumeGranularity);
   const priorityTrend = usePeriodTrend((_g, opts) => getResolutionByPriority(opts), 'all');
 
@@ -304,7 +315,7 @@ export default function Overview() {
 
   const agingData = useMemo(() => {
     if (!stats) return [];
-    return stats.agingBuckets.map((b) => ({ key: b.bucket, value: b.count, label: b.bucket }));
+    return stats.agingBuckets.map((b) => ({ key: b.bucket, value: b.count, label: b.bucket, color: AGING_COLORS[b.bucket] }));
   }, [stats]);
 
   // Action queue — the 5 longest-waiting open enquiries (see
@@ -611,7 +622,11 @@ export default function Overview() {
       <div className="chart-grid">
         <div className="panel">
           <h3>Open enquiries by age</h3>
-          <BarList data={agingData} colorFor={(key) => AGING_COLORS[key]} />
+          {agingData.some((b) => b.value > 0) ? (
+            <StackedBar data={agingData} />
+          ) : (
+            <p className="draft-hint" style={{ margin: 0 }}>No open enquiries.</p>
+          )}
         </div>
 
         <div className="panel">
@@ -620,12 +635,15 @@ export default function Overview() {
         </div>
 
         <div className="panel">
-          <h3>Status mix, by {globalGranularity}</h3>
+          <div className="panel-header-row">
+            <h3>Status mix, by {statusGranularity}</h3>
+            <GranularityToggle granularities={PERIOD_GRANULARITIES} value={statusGranularity} onChange={setStatusGranularity} />
+          </div>
           <TrendPanelBody
             error={statusTrend.error}
             loading={statusTrend.loading}
             data={statusStackedData}
-            emptyMessage={`No enquiries received this ${globalGranularity} yet.`}
+            emptyMessage={`No enquiries received this ${statusGranularity} yet.`}
           >
             <StackedBar data={statusStackedData} linkTo={(key) => `/queue?status=${encodeURIComponent(key)}`} />
           </TrendPanelBody>

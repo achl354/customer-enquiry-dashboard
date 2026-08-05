@@ -453,7 +453,7 @@ export default function Overview() {
           <div className="draft-hint">as of now</div>
         </div>
         <Link
-          to="/queue?priority=URGENT"
+          to="/queue?priority=URGENT&sort=status&order=asc"
           className={`stat-tile stat-tile-in stat-tile-link${stats.urgentOpen > 0 ? ' attention' : ''}`}
           style={{ animationDelay: '120ms' }}
         >
@@ -589,12 +589,15 @@ export default function Overview() {
           <h3>Action queue — longest waiting, still open</h3>
           <ul className="action-queue">
             {actionQueueData.map((e) => (
-              <li key={e.id} className="action-queue-row">
-                <span className="action-queue-age">{e.age}</span>
-                <PriorityBadge priority={e.priority} />
-                <CategoryPill category={e.category} />
-                <Link to={`/enquiries/${e.id}`} className="action-queue-subject">{e.subject}</Link>
-                <span className="action-queue-sender">{e.sender.email}</span>
+              <li key={e.id} className="action-queue-item">
+                <div className="action-queue-row">
+                  <span className="action-queue-age">{e.age}</span>
+                  <PriorityBadge priority={e.priority} />
+                  <CategoryPill category={e.category} />
+                  <Link to={`/enquiries/${e.id}`} className="action-queue-subject">{e.subject}</Link>
+                  <span className="action-queue-sender">{e.sender.email}</span>
+                </div>
+                {e.statusNote && <div className="action-queue-note" title={e.statusNote}>{e.statusNote}</div>}
               </li>
             ))}
           </ul>

@@ -202,6 +202,27 @@ router.patch('/:id/category', (req, res) => {
   res.json(updated);
 });
 
+// Free-text status note — "what's actually happening" (e.g. "awaiting
+// supplier feedback"), distinct from `status` itself which only ever
+// reflects the Outlook-synced workflow state and isn't staff-editable.
+// Empty string clears it back to null rather than storing "" — so
+// "no note" reads the same way whether it was never set or cleared.
+router.patch('/:id/status-note', (req, res) => {
+  const existing = repo.getEnquiry(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'Enquiry not found' });
+
+  const { statusNote } = req.body;
+  if (statusNote !== undefined && typeof statusNote !== 'string') {
+    return res.status(400).json({ error: 'statusNote must be a string' });
+  }
+  if (typeof statusNote === 'string' && statusNote.length > 500) {
+    return res.status(400).json({ error: 'statusNote must be 500 characters or fewer' });
+  }
+
+  const updated = repo.updateEnquiry(req.params.id, { statusNote: statusNote ? statusNote : null });
+  res.json(updated);
+});
+
 // "Delete" from the dashboard's perspective — see the DISMISSED comment in
 // db/repository.js for why this sets a dedicated status rather than
 // reusing RESOLVED/IGNORED (both are Outlook-sync-only elsewhere in this

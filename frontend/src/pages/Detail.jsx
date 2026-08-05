@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { getEnquiry, generateDraft, getThreadHistory, getFullBody, updateCategory, deleteEnquiry } from '../api';
+import { getEnquiry, generateDraft, getThreadHistory, getFullBody, updateCategory, updateStatusNote, deleteEnquiry } from '../api';
 import { PriorityBadge, StatusBadge, CategoryPill } from '../components/Badges';
 import { CATEGORY_OPTIONS, categoryLabel } from '../taxonomy';
 
@@ -22,6 +22,10 @@ export default function Detail() {
   const [fullBodyError, setFullBodyError] = useState(null);
   const [categorySaving, setCategorySaving] = useState(false);
   const [categoryError, setCategoryError] = useState(null);
+  const [statusNoteText, setStatusNoteText] = useState('');
+  const [statusNoteSaving, setStatusNoteSaving] = useState(false);
+  const [statusNoteError, setStatusNoteError] = useState(null);
+  const [statusNoteSaved, setStatusNoteSaved] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState(null);
 
@@ -39,6 +43,8 @@ export default function Detail() {
     setFullBodyError(null);
     setCopied(false);
     setCategoryError(null);
+    setStatusNoteError(null);
+    setStatusNoteSaved(false);
     setDeleteError(null);
 
     // Same instance-reuse issue means a slow response for the *previous*
@@ -51,6 +57,7 @@ export default function Detail() {
       .then((e) => {
         setEnquiry(e);
         setDraftText(e.draftReply || '');
+        setStatusNoteText(e.statusNote || '');
 
         // Both are Graph calls, not Claude — no AI cost either way, so
         // there's no cost reason to gate these behind a click. Only fires
@@ -119,6 +126,26 @@ export default function Detail() {
       setCategoryError(err.message);
     } finally {
       setCategorySaving(false);
+    }
+  }
+
+  // Explicit Save, not autosave-on-keystroke (same reasoning as the draft
+  // editor/category select) — a note this short doesn't need a debounce,
+  // just a deliberate "commit this" action.
+  async function handleSaveStatusNote() {
+    setStatusNoteSaving(true);
+    setStatusNoteError(null);
+    setStatusNoteSaved(false);
+    try {
+      const updated = await updateStatusNote(id, statusNoteText.trim());
+      setEnquiry(updated);
+      setStatusNoteText(updated.statusNote || '');
+      setStatusNoteSaved(true);
+      setTimeout(() => setStatusNoteSaved(false), 2000);
+    } catch (err) {
+      setStatusNoteError(err.message);
+    } finally {
+      setStatusNoteSaving(false);
     }
   }
 
@@ -326,6 +353,30 @@ export default function Detail() {
               Take the actual action in Outlook and this will catch up on the next poll.
               "Delete" below is the one status change this dashboard sets directly.
             </p>
+
+            <div className="control-row" style={{ marginTop: 14 }}>
+              <label htmlFor="status-note">Status note</label>
+              <textarea
+                id="status-note"
+                className="draft-textarea"
+                value={statusNoteText}
+                onChange={(e) => setStatusNoteText(e.target.value)}
+                placeholder="e.g. awaiting supplier feedback"
+                rows={2}
+                maxLength={500}
+              />
+            </div>
+            <div className="draft-actions" style={{ marginTop: 6 }}>
+              <button type="button" onClick={handleSaveStatusNote} disabled={statusNoteSaving}>
+                {statusNoteSaving ? 'Saving…' : statusNoteSaved ? 'Saved!' : 'Save note'}
+              </button>
+              <span className="draft-hint">
+                Your own free-text ("awaiting supplier feedback") — separate from the synced Status above, and shown on the Action queue and All Enquiries.
+              </span>
+            </div>
+            {statusNoteError && (
+              <p className="draft-hint" style={{ margin: '4px 0 0', color: 'var(--status-critical)' }}>{statusNoteError}</p>
+            )}
 
             <div className="draft-actions" style={{ marginTop: 14 }}>
               <button type="button" className="danger-btn" onClick={handleDelete} disabled={deleting}>

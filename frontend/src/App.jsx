@@ -142,7 +142,7 @@ function App() {
             </NavLink>
 
             <div className="sidebar-section">Quick filters</div>
-            <Link to="/queue?priority=URGENT" className="quick-filter-link">
+            <Link to="/queue?priority=URGENT&sort=status&order=asc" className="quick-filter-link">
               <IconAlertTriangle className="nav-icon" />
               <span className="nav-label">Urgent</span>
               {urgentCount !== null && (

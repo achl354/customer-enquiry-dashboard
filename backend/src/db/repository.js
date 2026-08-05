@@ -246,10 +246,18 @@ function rowToEnquiry(row) {
     confidence: row.confidence,
     classifiedBy: row.classified_by,
     status: row.status,
+    statusNote: row.status_note,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
+
+// Built from STATUS_RANK (defined above, for status-advancement logic) —
+// same underlying "how far along" ordering (NEW < IN_PROGRESS <
+// WAITING_ON_CUSTOMER < closed) happens to be exactly what sorting by
+// status should show too, so this reuses it rather than hand-maintaining
+// a second, easily-drifting copy of the same ranking.
+const STATUS_SORT_CASE = `CASE status ${Object.entries(STATUS_RANK).map(([status, rank]) => `WHEN '${status}' THEN ${rank}`).join(' ')} ELSE 99 END`;
 
 const SORT_COLUMNS = {
   receivedAt: 'received_at',
@@ -257,7 +265,10 @@ const SORT_COLUMNS = {
   // doesn't match severity, so rank by actual urgency instead.
   priority: "CASE priority WHEN 'URGENT' THEN 4 WHEN 'HIGH' THEN 3 WHEN 'NORMAL' THEN 2 WHEN 'LOW' THEN 1 ELSE 0 END",
   category: 'category',
-  status: 'status',
+  // Alphabetical here put DISMISSED/IGNORED first and NEW/IN_PROGRESS in
+  // the middle — meaningless for "what still needs work." See
+  // STATUS_SORT_CASE above.
+  status: STATUS_SORT_CASE,
 };
 
 // Shared by listEnquiries and the CSV export — both filter the same way,
@@ -324,6 +335,7 @@ function getEnquiry(id) {
 
 const UPDATE_COLUMNS = {
   status: 'status',
+  statusNote: 'status_note',
   draftReply: 'draft_reply',
   category: 'category',
   classifiedBy: 'classified_by',

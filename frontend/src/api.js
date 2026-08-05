@@ -51,6 +51,13 @@ export function updateCategory(id, category) {
   });
 }
 
+export function updateStatusNote(id, statusNote) {
+  return request(`/enquiries/${encodeURIComponent(id)}/status-note`, {
+    method: 'PATCH',
+    body: JSON.stringify({ statusNote }),
+  });
+}
+
 export function deleteEnquiry(id) {
   return request(`/enquiries/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }

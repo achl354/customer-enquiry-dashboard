@@ -32,6 +32,13 @@ export default function Queue() {
   const [sort, setSort] = useState('receivedAt');
   const [order, setOrder] = useState('desc');
   const [page, setPage] = useState(0);
+  // Overrides the default above when a link into this page carries its
+  // own sort — e.g. the sidebar/Overview "Urgent" quick filters set
+  // ?sort=status&order=asc so New/In Progress land on top instead of just
+  // whatever the last visitor happened to leave sort in. Only applied on
+  // the initial mount/direct navigation; toggleSort takes over from there
+  // (this doesn't re-force the URL's sort back on every filter change).
+  const initialSortApplied = useRef(false);
 
   // Drives the .can-scroll-left/-right classes (see .table-scroll in
   // App.css) so the edge-fade affordance only shows where there's
@@ -69,6 +76,21 @@ export default function Queue() {
       lowConfidence: searchParams.get('lowConfidence') === 'true' ? true : undefined,
     });
     setPage(0);
+
+    // One-shot: apply the URL's sort/order (if any) only on the page's
+    // first load, not on every subsequent filter change — otherwise
+    // toggling a filter dropdown while a `sort` param is still sitting in
+    // the URL would keep stomping back over whatever the user just
+    // manually re-sorted to.
+    if (!initialSortApplied.current) {
+      initialSortApplied.current = true;
+      const urlSort = searchParams.get('sort');
+      const urlOrder = searchParams.get('order');
+      if (urlSort && SORTABLE_COLUMNS.some((c) => c.key === urlSort)) {
+        setSort(urlSort);
+        setOrder(urlOrder === 'asc' || urlOrder === 'desc' ? urlOrder : 'asc');
+      }
+    }
   }, [searchParams]);
 
   useEffect(() => {
@@ -196,6 +218,7 @@ export default function Queue() {
                     {col.label}{sort === col.key ? (order === 'asc' ? ' ▲' : ' ▼') : ''}
                   </th>
                 ))}
+                <th>Status note</th>
               </tr>
             </thead>
             <tbody>
@@ -222,11 +245,12 @@ export default function Queue() {
                   <td><CategoryPill category={e.category} /></td>
                   <td><PriorityBadge priority={e.priority} /></td>
                   <td><StatusBadge status={e.status} /></td>
+                  <td className="status-note-cell" title={e.statusNote || ''}>{e.statusNote || '—'}</td>
                 </tr>
               ))}
               {items.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="empty-state">No enquiries match these filters.</td>
+                  <td colSpan={7} className="empty-state">No enquiries match these filters.</td>
                 </tr>
               )}
             </tbody>

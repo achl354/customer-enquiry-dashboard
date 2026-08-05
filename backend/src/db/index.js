@@ -72,6 +72,14 @@ if (!existingColumns.includes('resolved_at')) {
 if (!existingColumns.includes('first_replied_at')) {
   db.exec('ALTER TABLE enquiries ADD COLUMN first_replied_at TEXT');
 }
+// Free-text, staff-entered — "what's actually happening" (e.g. "awaiting
+// supplier feedback") alongside `status`, which only ever reflects the
+// Outlook-synced workflow state (NEW/IN_PROGRESS/etc.) and can't carry
+// that kind of detail. Set only via PATCH /enquiries/:id/status-note
+// (routes/enquiries.js) — nothing else in this app writes to it.
+if (!existingColumns.includes('status_note')) {
+  db.exec('ALTER TABLE enquiries ADD COLUMN status_note TEXT');
+}
 
 // One-time reclassification, not a schema change — REMOVED used to mean "the
 // message became unreachable via Graph," modeled as distinct from RESOLVED

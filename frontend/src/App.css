@@ -389,17 +389,36 @@
   gap: 8px;
 }
 
+/* Border/padding live on the <li> (.action-queue-item), not the inner row,
+   so the status note line below sits inside the same bordered block as its
+   row instead of getting its own separate divider. */
+.action-queue-item {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--gridline);
+}
+
+.action-queue-item:last-child {
+  border-bottom: none;
+}
+
 .action-queue-row {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--gridline);
   font-size: 13px;
 }
 
-.action-queue-row:last-child {
-  border-bottom: none;
+/* Staff's own free-text ("awaiting supplier feedback") — italic + muted so
+   it reads as a note, not another data field, and only rendered at all
+   when one's actually been set (see Overview.jsx). */
+.action-queue-note {
+  margin: 3px 0 0 42px;
+  font-size: 12px;
+  font-style: italic;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .action-queue-age {
@@ -1341,6 +1360,15 @@
      badge ("Waiting on customer"), which was overflowing the table at
      common desktop widths. */
   max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.enquiry-table .status-note-cell {
+  color: var(--text-muted);
+  font-style: italic;
+  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

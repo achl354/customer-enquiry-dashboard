@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   getOverviewStats,
@@ -8,15 +8,13 @@ import {
   getResolutionByPriority,
   getBacklogTrend,
   getVolumeTrend,
-  reclassifyByFacility,
-  getReclassifyByFacilityStatus,
 } from '../api';
 import { BarList } from '../components/BarList';
 import { DualTrendChart } from '../components/DualTrendChart';
 import { NetDiffChart } from '../components/NetDiffChart';
 import { StackedBar } from '../components/StackedBar';
 import { OverviewSkeleton } from '../components/Skeletons';
-import { IconLayers, IconInbox, IconAlertTriangle, IconRefresh } from '../components/Icons';
+import { IconLayers, IconInbox, IconAlertTriangle } from '../components/Icons';
 import { PriorityBadge, CategoryPill } from '../components/Badges';
 import { categoryLabel, priorityLabel } from '../taxonomy';
 import { useCountUp } from '../hooks/useCountUp';
@@ -182,25 +180,6 @@ export default function Overview() {
   // ROLLING_AVG_DAYS above.
   const [volumeSmoothed, setVolumeSmoothed] = useState(false);
 
-  // Facility-scoped reclassify (Top facilities panel) — one at a time,
-  // fire-and-poll same as the mailbox-wide backfill job (see
-  // reclassifyByFacility in graph/poller.js). reclassifyCancelRef guards
-  // the poll loop's setState calls against firing after this page has
-  // navigated away mid-poll. The effect body resets the flag to false, not
-  // just the cleanup setting it true — React 18 StrictMode double-invokes
-  // this effect once in dev (mount -> effect -> cleanup -> effect again),
-  // and a cleanup-only version left the ref permanently `true` after that
-  // synthetic cleanup with nothing to ever flip it back, silently killing
-  // every poll loop's first status check before it could schedule a
-  // second one.
-  const [reclassifyingFacility, setReclassifyingFacility] = useState(null);
-  const [reclassifyResult, setReclassifyResult] = useState(null);
-  const reclassifyCancelRef = useRef(false);
-  useEffect(() => {
-    reclassifyCancelRef.current = false;
-    return () => { reclassifyCancelRef.current = true; };
-  }, []);
-
   useEffect(() => {
     const load = () => getOverviewStats().then(setStats).catch((e) => setError(e.message));
     load();
@@ -341,60 +320,6 @@ export default function Overview() {
       }));
   }, [priorityTrend.data]);
 
-  // Fires the facility-scoped reclassify job, then polls its status until
-  // done (same 202-then-poll shape as the mailbox-wide backfill — see
-  // reclassifyByFacility/getReclassifyByFacilityStatus in api.js). Scoped
-  // to *every* enquiry currently attributed to `facility`, not just the
-  // ones counted in this panel's since-TOTAL_SINCE total — the confirm
-  // copy says so rather than quoting a number that wouldn't match.
-  async function handleReclassifyFacility(facility) {
-    if (reclassifyingFacility) return;
-    const confirmed = window.confirm(
-      `Reclassify all enquiries currently attributed to "${facility}"?\n\nThis re-runs AI classification and may change category, priority, or status — including any enquiries from before the reporting window shown here.`
-    );
-    if (!confirmed) return;
-
-    setReclassifyingFacility(facility);
-    setReclassifyResult(null);
-    try {
-      await reclassifyByFacility(facility);
-    } catch (e) {
-      if (reclassifyCancelRef.current) return;
-      setReclassifyingFacility(null);
-      setReclassifyResult({ facility, message: `Failed to start: ${e.message}` });
-      return;
-    }
-
-    const poll = async () => {
-      let status;
-      try {
-        status = await getReclassifyByFacilityStatus();
-      } catch (e) {
-        if (reclassifyCancelRef.current) return;
-        setReclassifyingFacility(null);
-        setReclassifyResult({ facility, message: `Failed to check progress: ${e.message}` });
-        return;
-      }
-      if (reclassifyCancelRef.current) return;
-      if (status.running) {
-        setTimeout(poll, 2000);
-        return;
-      }
-      setReclassifyingFacility(null);
-      const result = status.lastResult;
-      if (!result || result.error) {
-        setReclassifyResult({ facility, message: `Failed: ${result?.error || 'unknown error'}` });
-      } else {
-        setReclassifyResult({
-          facility,
-          message: `Reclassified ${result.reclassified}/${result.reassessed}${result.failed ? `, ${result.failed} failed` : ''}.`,
-        });
-        getOverviewStats().then(setStats).catch(() => {});
-      }
-    };
-    setTimeout(poll, 1500);
-  }
-
   if (error) return <div className="error-state">Failed to load stats: {error}</div>;
   if (!stats) return <OverviewSkeleton />;
 
@@ -409,7 +334,7 @@ export default function Overview() {
   return (
     <div className="overview-page">
       <div className="overview-header">
-        <h2>Mailbox Overview</h2>
+        <h2>Enquiry Watch</h2>
         {mailbox && (
           <>
             <span className="overview-separator">–</span>
@@ -522,6 +447,15 @@ export default function Overview() {
         </TrendPanelBody>
       </div>
 
+      <div className="panel">
+        <h3>Open enquiries by age</h3>
+        {agingData.some((b) => b.value > 0) ? (
+          <StackedBar data={agingData} />
+        ) : (
+          <p className="draft-hint" style={{ margin: 0 }}>No open enquiries.</p>
+        )}
+      </div>
+
       <div className="chart-grid">
         <div className="panel">
           <h3>Resolution time by priority</h3>
@@ -574,11 +508,18 @@ export default function Overview() {
 
       <div className="chart-grid">
         <div className="panel">
-          <h3>Open enquiries by age</h3>
-          {agingData.some((b) => b.value > 0) ? (
-            <StackedBar data={agingData} />
+          <div className="panel-header-row">
+            <h3>Top facilities / organisations{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
+            {stats.facilityAttributionRate != null && (
+              <span className="draft-hint" style={{ margin: 0 }} title="Share of enquiries with a real facility name, not 'Not attributed' — see classify.js's KNOWN_ORG_DOMAINS/GENERIC_DOMAINS">
+                {Math.round(stats.facilityAttributionRate * 100)}% attributed
+              </span>
+            )}
+          </div>
+          {facilityData.length > 0 ? (
+            <BarList data={facilityData} />
           ) : (
-            <p className="draft-hint" style={{ margin: 0 }}>No open enquiries.</p>
+            <p className="draft-hint" style={{ margin: 0 }}>No facility data yet.</p>
           )}
         </div>
 
@@ -586,40 +527,6 @@ export default function Overview() {
           <h3>Enquiries by category{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
           <BarList data={categoryData} linkTo={(key) => `/queue?category=${encodeURIComponent(key)}`} />
         </div>
-      </div>
-
-      <div className="panel">
-        <div className="panel-header-row">
-          <h3>Top facilities / organisations{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
-          {stats.facilityAttributionRate != null && (
-            <span className="draft-hint" style={{ margin: 0 }} title="Share of enquiries with a real facility name, not 'Not attributed' — see classify.js's KNOWN_ORG_DOMAINS/GENERIC_DOMAINS">
-              {Math.round(stats.facilityAttributionRate * 100)}% attributed
-            </span>
-          )}
-        </div>
-        {reclassifyResult && (
-          <p className="draft-hint" style={{ marginTop: 0, marginBottom: 10 }}>
-            "{reclassifyResult.facility}": {reclassifyResult.message}
-          </p>
-        )}
-        {facilityData.length > 0 ? (
-          <BarList
-            data={facilityData}
-            renderAction={(key) => (
-              <button
-                type="button"
-                className={`bar-action-btn${reclassifyingFacility === key ? ' spinning' : ''}`}
-                disabled={reclassifyingFacility !== null}
-                title={`Reclassify all enquiries from "${key}"`}
-                onClick={() => handleReclassifyFacility(key)}
-              >
-                <IconRefresh />
-              </button>
-            )}
-          />
-        ) : (
-          <p className="draft-hint" style={{ margin: 0 }}>No facility data yet.</p>
-        )}
       </div>
     </div>
   );

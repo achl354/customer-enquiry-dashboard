@@ -8,7 +8,7 @@ function Bone({ width, height = 14, style }) {
 export function OverviewSkeleton() {
   return (
     <div>
-      <h2>Mailbox Overview</h2>
+      <h2>Enquiry Watch</h2>
 
       <div className="stat-grid">
         {Array.from({ length: 6 }).map((_, i) => (

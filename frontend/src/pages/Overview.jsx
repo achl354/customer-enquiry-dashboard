@@ -86,14 +86,15 @@ const VOLUME_GRANULARITIES = [
   { key: 'week', label: 'Week' },
   { key: 'month', label: 'Month' },
 ];
-// Same set as VOLUME_GRANULARITIES, no Quarter/Year — kept as its own
-// constant (rather than reusing VOLUME_GRANULARITIES directly) since these
-// two panels' granularity sets happen to match today but aren't the same
-// concept, and backend/routes/stats.js validates them independently too.
+// Its own constant (not reused from VOLUME_GRANULARITIES/PERIOD_GRANULARITIES)
+// since this panel's granularity set — Day/Week/Month/Year, no Quarter —
+// doesn't match either of those exactly, and backend/routes/stats.js
+// validates it independently too.
 const CATEGORY_TREND_GRANULARITIES = [
   { key: 'day', label: 'Day' },
   { key: 'week', label: 'Week' },
   { key: 'month', label: 'Month' },
+  { key: 'year', label: 'Year' },
 ];
 
 // Caps the category-trend chart's legend/color count — with 14 real

@@ -1018,19 +1018,25 @@ function weeklyCategoryTrend() {
   }));
 }
 
-const CATEGORY_TREND_MONTH_STMT = db.prepare(
-  `SELECT ${periodExprFor('received_at', 'month')} as period, category, COUNT(*) as count
-   FROM enquiries WHERE received_at >= '${TOTAL_SINCE}' GROUP BY period, category`
-);
+// Month and year both go through periodExprFor/enumeratePeriodEnds (same as
+// periodVolumeTrend's month/quarter above), just with category added to the
+// GROUP BY — one prepared statement per granularity, same pattern.
+const CATEGORY_TREND_PERIOD_STMTS = ['month', 'year'].reduce((stmts, g) => {
+  stmts[g] = db.prepare(
+    `SELECT ${periodExprFor('received_at', g)} as period, category, COUNT(*) as count
+     FROM enquiries WHERE received_at >= '${TOTAL_SINCE}' GROUP BY period, category`
+  );
+  return stmts;
+}, {});
 
-function monthlyCategoryTrend() {
+function periodCategoryTrend(granularity) {
   const byPeriod = {};
-  for (const r of CATEGORY_TREND_MONTH_STMT.all()) {
+  for (const r of CATEGORY_TREND_PERIOD_STMTS[granularity].all()) {
     if (!byPeriod[r.period]) byPeriod[r.period] = {};
     byPeriod[r.period][r.category] = r.count;
   }
-  return enumeratePeriodEnds('month').map(({ periodStart }) => {
-    const period = labelForPeriodStart('month', periodStart);
+  return enumeratePeriodEnds(granularity).map(({ periodStart }) => {
+    const period = labelForPeriodStart(granularity, periodStart);
     return { period, categories: zeroFilledCategories(byPeriod[period] || {}) };
   });
 }
@@ -1038,8 +1044,8 @@ function monthlyCategoryTrend() {
 function categoryTrend(granularity) {
   if (granularity === 'day') return dailyCategoryTrend();
   if (granularity === 'week') return weeklyCategoryTrend();
-  if (granularity === 'month') return monthlyCategoryTrend();
-  throw new Error(`Invalid granularity: ${granularity}. Use day, week, or month.`);
+  if (granularity === 'month' || granularity === 'year') return periodCategoryTrend(granularity);
+  throw new Error(`Invalid granularity: ${granularity}. Use day, week, month, or year.`);
 }
 
 function overviewStats() {

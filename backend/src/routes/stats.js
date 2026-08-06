@@ -5,7 +5,7 @@ const router = express.Router();
 
 const PERIOD_GRANULARITIES = ['month', 'quarter', 'year'];
 const VOLUME_GRANULARITIES = ['day', 'week', 'month', 'quarter'];
-const CATEGORY_TREND_GRANULARITIES = ['day', 'week', 'month'];
+const CATEGORY_TREND_GRANULARITIES = ['day', 'week', 'month', 'year'];
 
 function validateGranularity(req, res, allowed) {
   const granularity = req.query.granularity || (allowed.includes('month') ? 'month' : allowed[0]);

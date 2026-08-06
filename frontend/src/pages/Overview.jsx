@@ -8,13 +8,11 @@ import {
   getFirstResponseByPriority,
   getBacklogTrend,
   getVolumeTrend,
-  getCategoryTrend,
 } from '../api';
 import { BarList } from '../components/BarList';
 import { DualTrendChart } from '../components/DualTrendChart';
 import { NetDiffChart } from '../components/NetDiffChart';
 import { StackedBar } from '../components/StackedBar';
-import { CategoryTrendChart } from '../components/CategoryTrendChart';
 import { OverviewSkeleton } from '../components/Skeletons';
 import { IconLayers, IconInbox, IconAlertTriangle, IconNote } from '../components/Icons';
 import { PriorityBadge, CategoryPill } from '../components/Badges';
@@ -86,32 +84,6 @@ const VOLUME_GRANULARITIES = [
   { key: 'week', label: 'Week' },
   { key: 'month', label: 'Month' },
 ];
-// Its own constant (not reused from VOLUME_GRANULARITIES/PERIOD_GRANULARITIES)
-// since this panel's granularity set — Day/Week/Month/Year, no Quarter —
-// doesn't match either of those exactly, and backend/routes/stats.js
-// validates it independently too.
-const CATEGORY_TREND_GRANULARITIES = [
-  { key: 'day', label: 'Day' },
-  { key: 'week', label: 'Week' },
-  { key: 'month', label: 'Month' },
-  { key: 'year', label: 'Year' },
-];
-
-// Caps the category-trend chart's legend/color count — with 14 real
-// categories, showing all of them as distinct colors would be unreadable.
-// Ranked by each category's single BIGGEST period (see
-// categoryTrendSeries below), not its all-time total: a category that's
-// usually small but spikes hard on one day (e.g. a spam/notification
-// burst) needs to keep its own color specifically because that spike is
-// the thing worth seeing — ranking by total volume could bury it inside
-// "Other" and hide exactly that.
-const MAX_CATEGORY_TREND_SERIES = 6;
-const CATEGORY_TREND_COLORS = [
-  'var(--series-1)', 'var(--series-2)', 'var(--series-3)',
-  'var(--series-4)', 'var(--series-5)', 'var(--series-6)',
-];
-const OTHER_CATEGORY_KEY = '__OTHER__';
-
 // Rolling window for the volume panel's smoothed view — only offered at
 // day granularity, where raw daily counts are noisy enough that a trend
 // line benefits from averaging; week/month/quarter are already smooth
@@ -251,7 +223,6 @@ export default function Overview() {
   // Only meaningful (and only shown) at day granularity — see
   // ROLLING_AVG_DAYS above.
   const [volumeSmoothed, setVolumeSmoothed] = useState(false);
-  const [categoryTrendGranularity, setCategoryTrendGranularity] = useState('day');
 
   useEffect(() => {
     const load = () => getOverviewStats().then(setStats).catch((e) => setError(e.message));
@@ -271,7 +242,6 @@ export default function Overview() {
   const firstResponseTrend = usePeriodTrend(getFirstResponseTrend, firstResponseGranularity);
   const backlogTrend = usePeriodTrend(getBacklogTrend, backlogGranularity);
   const volumeTrend = usePeriodTrend(getVolumeTrend, volumeGranularity);
-  const categoryTrend = usePeriodTrend(getCategoryTrend, categoryTrendGranularity);
   const priorityTrend = usePeriodTrend((_g, opts) => getResolutionByPriority(opts), 'all');
   const firstResponseByPriorityTrend = usePeriodTrend((_g, opts) => getFirstResponseByPriority(opts), 'all');
 
@@ -308,52 +278,6 @@ export default function Overview() {
       return { ...c, label: `${c.label} (cum. ${cumPct}%)` };
     });
   }, [stats]);
-
-  // Which categories get their own color in the category-trend chart below
-  // (top MAX_CATEGORY_TREND_SERIES, ranked by each category's single
-  // biggest period — see the constant's comment for why peak beats total
-  // volume here), plus one "Other" bucket for the rest. Computed from the
-  // raw per-category data, not the Pareto-sorted categoryData above —
-  // that's sorted by all-time total, which is exactly the ranking this
-  // deliberately avoids.
-  const categoryTrendSeries = useMemo(() => {
-    if (!categoryTrend.data || categoryTrend.data.length === 0) return [];
-    const peakByCategory = {};
-    for (const row of categoryTrend.data) {
-      for (const [cat, count] of Object.entries(row.categories)) {
-        peakByCategory[cat] = Math.max(peakByCategory[cat] || 0, count);
-      }
-    }
-    const ranked = Object.entries(peakByCategory)
-      .filter(([, peak]) => peak > 0)
-      .sort((a, b) => b[1] - a[1])
-      .map(([cat]) => cat);
-    const top = ranked.slice(0, MAX_CATEGORY_TREND_SERIES);
-    const series = top.map((cat, i) => ({ key: cat, label: categoryLabel(cat), color: CATEGORY_TREND_COLORS[i] }));
-    if (ranked.length > top.length) {
-      series.push({ key: OTHER_CATEGORY_KEY, label: 'Other', color: 'var(--text-muted)' });
-    }
-    return series;
-  }, [categoryTrend.data]);
-
-  // Re-buckets each period's raw per-category counts down to just the
-  // series chosen above — everything not in the top set gets summed into
-  // __OTHER__, so the chart only ever needs to draw categoryTrendSeries.length
-  // segments per bar, not all 14 real categories.
-  const categoryTrendChartData = useMemo(() => {
-    if (!categoryTrend.data) return [];
-    const topKeys = new Set(categoryTrendSeries.map((s) => s.key).filter((k) => k !== OTHER_CATEGORY_KEY));
-    return categoryTrend.data.map((row) => {
-      const categories = {};
-      let other = 0;
-      for (const [cat, count] of Object.entries(row.categories)) {
-        if (topKeys.has(cat)) categories[cat] = count;
-        else other += count;
-      }
-      if (other > 0) categories[OTHER_CATEGORY_KEY] = other;
-      return { period: row.period, categories };
-    });
-  }, [categoryTrend.data, categoryTrendSeries]);
 
   const facilityData = useMemo(() => {
     if (!stats) return [];
@@ -730,24 +654,6 @@ export default function Overview() {
         <div className="panel">
           <h3>Enquiries by category{sinceDate ? ` (since ${sinceDate})` : ''}</h3>
           <BarList data={categoryData} linkTo={(key) => `/queue?category=${encodeURIComponent(key)}`} />
-
-          <div className="panel-header-row" style={{ marginTop: 16 }}>
-            <div className="action-queue-group-label" style={{ margin: 0 }}>Trend by {categoryTrendGranularity}</div>
-            <GranularityToggle granularities={CATEGORY_TREND_GRANULARITIES} value={categoryTrendGranularity} onChange={setCategoryTrendGranularity} />
-          </div>
-          <TrendPanelBody
-            error={categoryTrend.error}
-            loading={categoryTrend.loading}
-            data={categoryTrendChartData}
-            emptyMessage="No enquiries recorded yet."
-          >
-            <CategoryTrendChart
-              data={categoryTrendChartData}
-              xKey="period"
-              series={categoryTrendSeries}
-              xFormat={(p) => formatVolumePeriod(p, categoryTrendGranularity)}
-            />
-          </TrendPanelBody>
         </div>
       </div>
     </div>

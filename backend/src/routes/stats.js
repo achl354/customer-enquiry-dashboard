@@ -5,7 +5,6 @@ const router = express.Router();
 
 const PERIOD_GRANULARITIES = ['month', 'quarter', 'year'];
 const VOLUME_GRANULARITIES = ['day', 'week', 'month', 'quarter'];
-const CATEGORY_TREND_GRANULARITIES = ['day', 'week', 'month', 'year'];
 
 function validateGranularity(req, res, allowed) {
   const granularity = req.query.granularity || (allowed.includes('month') ? 'month' : allowed[0]);
@@ -77,17 +76,6 @@ router.get('/volume-trend', (req, res) => {
   const granularity = validateGranularity(req, res, VOLUME_GRANULARITIES);
   if (!granularity) return;
   res.json(repo.volumeTrend(granularity));
-});
-
-// Received volume broken out by category per period — day/week/month —
-// behind the "Enquiries by category" trend chart. Every row's categories
-// are zero-filled across every known category (see categoryTrend in
-// db/repository.js), so a category with zero enquiries in a given period
-// is a real 0, not a missing key.
-router.get('/category-trend', (req, res) => {
-  const granularity = validateGranularity(req, res, CATEGORY_TREND_GRANULARITIES);
-  if (!granularity) return;
-  res.json(repo.categoryTrend(granularity));
 });
 
 // Status mix of enquiries *received* in the current month/fiscal-quarter/

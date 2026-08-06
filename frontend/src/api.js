@@ -96,10 +96,6 @@ export function getBacklogTrend(granularity, options = {}) {
   return request(`/stats/backlog-trend?granularity=${encodeURIComponent(granularity)}`, options);
 }
 
-export function getCategoryTrend(granularity, options = {}) {
-  return request(`/stats/category-trend?granularity=${encodeURIComponent(granularity)}`, options);
-}
-
 export function getVolumeTrend(granularity, options = {}) {
   return request(`/stats/volume-trend?granularity=${encodeURIComponent(granularity)}`, options);
 }

@@ -652,9 +652,23 @@ const FIRST_RESPONSE_TREND_STMTS = ['month', 'quarter', 'year'].reduce((stmts, g
   return stmts;
 }, {});
 
+// Day isn't part of periodExprFor (that's fiscal month/quarter/year only),
+// and deliberately NOT zero-filled from TOTAL_SINCE the way volume/category
+// day-trends are — this is a process metric, same as the month/quarter/year
+// statements above (which likewise only ever return periods that actually
+// have a first reply in them, no zero-value placeholders for empty ones).
+const dailyFirstResponseTrendStmt = db.prepare(
+  `SELECT date(first_replied_at) as period,
+          AVG((julianday(first_replied_at) - julianday(received_at)) * 24) as avgHours,
+          COUNT(*) as count
+   FROM enquiries WHERE first_replied_at IS NOT NULL
+   GROUP BY period ORDER BY period ASC`
+);
+
 function firstResponseTimeTrend(granularity) {
+  if (granularity === 'day') return dailyFirstResponseTrendStmt.all();
   const stmt = FIRST_RESPONSE_TREND_STMTS[granularity];
-  if (!stmt) throw new Error(`Invalid granularity: ${granularity}. Use month, quarter, or year.`);
+  if (!stmt) throw new Error(`Invalid granularity: ${granularity}. Use day, month, quarter, or year.`);
   return stmt.all();
 }
 

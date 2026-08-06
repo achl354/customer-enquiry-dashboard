@@ -84,6 +84,16 @@ const VOLUME_GRANULARITIES = [
   { key: 'week', label: 'Week' },
   { key: 'month', label: 'Month' },
 ];
+// First response's own set (not PERIOD_GRANULARITIES) — Day instead of
+// Year, since "how fast are we replying" is much more actionable checked
+// day-to-day than year-over-year; backend still accepts ?granularity=year
+// (see routes/stats.js), this just isn't offered as a toggle option here.
+const FIRST_RESPONSE_GRANULARITIES = [
+  { key: 'day', label: 'Day' },
+  { key: 'month', label: 'Month' },
+  { key: 'quarter', label: 'Quarter' },
+];
+
 // Rolling window for the volume panel's smoothed view — only offered at
 // day granularity, where raw daily counts are noisy enough that a trend
 // line benefits from averaging; week/month/quarter are already smooth
@@ -359,7 +369,11 @@ export default function Overview() {
     return firstResponseTrend.data.map((r) => ({
       key: r.period,
       value: r.avgHours,
-      label: `${formatTrendPeriod(r.period, firstResponseGranularity)} (${r.count} replied)`,
+      // formatVolumePeriod, not formatTrendPeriod directly — this
+      // granularity set includes 'day' now, which formatTrendPeriod
+      // doesn't handle (it'd misread a "2026-08-06"-style day string as a
+      // bare fiscal year).
+      label: `${formatVolumePeriod(r.period, firstResponseGranularity)} (${r.count} replied)`,
     }));
   }, [firstResponseTrend.data, firstResponseGranularity]);
 
@@ -575,9 +589,9 @@ export default function Overview() {
         <div className="panel">
           <div className="panel-header-row">
             <h3>First response time by {firstResponseGranularity}</h3>
-            <GranularityToggle granularities={PERIOD_GRANULARITIES} value={firstResponseGranularity} onChange={setFirstResponseGranularity} />
+            <GranularityToggle granularities={FIRST_RESPONSE_GRANULARITIES} value={firstResponseGranularity} onChange={setFirstResponseGranularity} />
           </div>
-          {firstResponseGranularity !== 'month' && (
+          {firstResponseGranularity === 'quarter' && (
             <p className="draft-hint" style={{ marginTop: 0, marginBottom: 10 }}>Financial year — 1 Jul to 30 Jun.</p>
           )}
           <TrendPanelBody

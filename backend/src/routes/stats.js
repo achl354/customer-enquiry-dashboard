@@ -5,6 +5,12 @@ const router = express.Router();
 
 const PERIOD_GRANULARITIES = ['month', 'quarter', 'year'];
 const VOLUME_GRANULARITIES = ['day', 'week', 'month', 'quarter'];
+// Its own list (not PERIOD_GRANULARITIES) since this route also accepts
+// 'day' — kept a superset (day/month/quarter/year) rather than dropping
+// 'year' server-side just because the Overview toggle doesn't offer it,
+// same as Volume's ?granularity=quarter staying valid after its own UI
+// option was removed.
+const FIRST_RESPONSE_GRANULARITIES = ['day', 'month', 'quarter', 'year'];
 
 function validateGranularity(req, res, allowed) {
   const granularity = req.query.granularity || (allowed.includes('month') ? 'month' : allowed[0]);
@@ -38,7 +44,7 @@ router.get('/resolution-trend', (req, res) => {
 // customer-facing ones) — see first_replied_at in db/index.js. Forward-
 // looking only, so this can be sparse or empty for a while after deploy.
 router.get('/first-response-trend', (req, res) => {
-  const granularity = validateGranularity(req, res, PERIOD_GRANULARITIES);
+  const granularity = validateGranularity(req, res, FIRST_RESPONSE_GRANULARITIES);
   if (!granularity) return;
   res.json(repo.firstResponseTimeTrend(granularity));
 });

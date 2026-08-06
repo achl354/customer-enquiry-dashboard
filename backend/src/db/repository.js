@@ -1,5 +1,6 @@
 const db = require('./index');
 const { classifyEmail } = require('../triage');
+const { CATEGORIES } = require('../triage/classify');
 
 function nowIso() {
   return new Date().toISOString();
@@ -958,6 +959,89 @@ function volumeTrend(granularity) {
   throw new Error(`Invalid granularity: ${granularity}. Use day, week, month, or quarter.`);
 }
 
+// Same received-by-day/week/month shape as volumeTrend above, but broken
+// out by category instead of collapsed to one count — lets the Overview
+// "Enquiries by category" trend chart show *which* categories a given
+// day's volume was actually made of (e.g. a spam/notification burst),
+// not just that a spike happened. Every row is zero-filled across every
+// category in CATEGORIES (not just the ones with a nonzero count that
+// period), so the frontend never has to guess whether a missing key means
+// zero or means "not fetched yet."
+function zeroFilledCategories(counts) {
+  const categories = {};
+  for (const cat of CATEGORIES) categories[cat] = counts[cat] || 0;
+  return categories;
+}
+
+const dailyCategoryRowsStmt = db.prepare(
+  `SELECT date(received_at) as day, category, COUNT(*) as count FROM enquiries WHERE received_at >= '${TOTAL_SINCE}' GROUP BY day, category`
+);
+
+function dailyCategoryTrend() {
+  const byDay = {};
+  for (const r of dailyCategoryRowsStmt.all()) {
+    if (!byDay[r.day]) byDay[r.day] = {};
+    byDay[r.day][r.category] = r.count;
+  }
+  // Same day-enumeration approach as dailyVolumeTrend above.
+  const dayCount = Math.max(1, Math.floor((Date.now() - new Date(TOTAL_SINCE).getTime()) / (24 * 60 * 60 * 1000)) + 1);
+  const out = [];
+  for (let i = dayCount - 1; i >= 0; i -= 1) {
+    const period = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    out.push({ period, categories: zeroFilledCategories(byDay[period] || {}) });
+  }
+  return out;
+}
+
+const receivedWithCategoryInWindowStmt = db.prepare(
+  `SELECT received_at, category FROM enquiries WHERE received_at >= '${TOTAL_SINCE}'`
+);
+
+function weeklyCategoryTrend() {
+  // Same trailing-7-day-bucket-from-TOTAL_SINCE approach as weeklyVolumeTrend.
+  const startMs = new Date(TOTAL_SINCE).getTime();
+  const nowMs = Date.now();
+  const dayMs = 24 * 60 * 60 * 1000;
+  const weekCount = Math.max(1, Math.ceil((nowMs - startMs) / (7 * dayMs)));
+
+  const perWeek = Array.from({ length: weekCount }, () => ({}));
+  for (const row of receivedWithCategoryInWindowStmt.all()) {
+    const idx = Math.floor((new Date(row.received_at).getTime() - startMs) / (7 * dayMs));
+    if (idx >= 0 && idx < weekCount) {
+      perWeek[idx][row.category] = (perWeek[idx][row.category] || 0) + 1;
+    }
+  }
+
+  return perWeek.map((counts, i) => ({
+    period: new Date(startMs + i * 7 * dayMs).toISOString().slice(0, 10),
+    categories: zeroFilledCategories(counts),
+  }));
+}
+
+const CATEGORY_TREND_MONTH_STMT = db.prepare(
+  `SELECT ${periodExprFor('received_at', 'month')} as period, category, COUNT(*) as count
+   FROM enquiries WHERE received_at >= '${TOTAL_SINCE}' GROUP BY period, category`
+);
+
+function monthlyCategoryTrend() {
+  const byPeriod = {};
+  for (const r of CATEGORY_TREND_MONTH_STMT.all()) {
+    if (!byPeriod[r.period]) byPeriod[r.period] = {};
+    byPeriod[r.period][r.category] = r.count;
+  }
+  return enumeratePeriodEnds('month').map(({ periodStart }) => {
+    const period = labelForPeriodStart('month', periodStart);
+    return { period, categories: zeroFilledCategories(byPeriod[period] || {}) };
+  });
+}
+
+function categoryTrend(granularity) {
+  if (granularity === 'day') return dailyCategoryTrend();
+  if (granularity === 'week') return weeklyCategoryTrend();
+  if (granularity === 'month') return monthlyCategoryTrend();
+  throw new Error(`Invalid granularity: ${granularity}. Use day, week, or month.`);
+}
+
 function overviewStats() {
   // Real week-over-week volume comparison (by received_at), not a fabricated
   // trend — used for the "Total enquiries" delta indicator on Overview.
@@ -1061,6 +1145,7 @@ module.exports = {
   firstResponseTimeByPriority,
   backlogTrend,
   volumeTrend,
+  categoryTrend,
   statusByPeriod,
   unattributedDomains,
   unattributedDomainCategories,

@@ -83,7 +83,6 @@ const VOLUME_GRANULARITIES = [
   { key: 'day', label: 'Day' },
   { key: 'week', label: 'Week' },
   { key: 'month', label: 'Month' },
-  { key: 'quarter', label: 'Quarter' },
 ];
 
 // Rolling window for the volume panel's smoothed view — only offered at

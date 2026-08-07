@@ -555,7 +555,18 @@ async function fetchReplyStatus(items) {
           // firstReplyAt below (used to set first_replied_at, once, the
           // first time a reply is detected) reflects the actual first
           // reply rather than whichever happened to be newest at $top=3.
-          url: `/users/${mailbox}/mailFolders/sentitems/messages?$filter=conversationId eq '${encodeURIComponent(escapeODataString(item.conversationId))}'&$select=toRecipients,ccRecipients,sentDateTime&$orderby=sentDateTime desc&$top=25`,
+          //
+          // No $orderby, on purpose — same reason fetchConversationMessages
+          // has none: combining this $filter with $orderby on a different
+          // property is exactly what triggers Graph's "InefficientFilter"
+          // (400, "restriction or sort order is too complex"), confirmed in
+          // production (every single request in a chunk failing this way,
+          // completely silently, is what was actually behind
+          // first_replied_at never getting set at all). firstReplyAt below
+          // is computed as the minimum sentDateTime over whatever comes
+          // back regardless of order, so dropping $orderby doesn't change
+          // the result — it just avoids the combination Graph rejects.
+          url: `/users/${mailbox}/mailFolders/sentitems/messages?$filter=conversationId eq '${encodeURIComponent(escapeODataString(item.conversationId))}'&$select=toRecipients,ccRecipients,sentDateTime&$top=25`,
         })),
       };
       const res = await fetch(GRAPH_BATCH_URL, {

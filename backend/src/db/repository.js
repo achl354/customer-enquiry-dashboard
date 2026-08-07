@@ -773,24 +773,36 @@ const dailyFirstResponseTrendStmt = db.prepare(
 // forward-looking only (see first_replied_at's column comment in
 // db/index.js), so zero-filling from TOTAL_SINCE would print weeks of
 // "0 replied" days from before this feature even existed, implying a data
-// gap that was never real. Two weeks is enough to show "how's it going
-// lately" and to make a quiet day read as "nothing came in today" rather
-// than "this chart doesn't work," without dragging in that pre-feature
-// history.
-const FIRST_RESPONSE_DAILY_WINDOW_DAYS = 14;
+// gap that was never real.
+//
+// Working days (Mon-Fri) only, not calendar days — a plain calendar window
+// would guarantee two "0 replied" placeholder days every single week
+// (nobody's expected to reply to email on a Saturday), which is a
+// meaningless non-signal that just crowds out the working days that
+// actually matter here. Day-of-week check is UTC-based, same convention
+// date()/dailyVolumeTrend already use elsewhere in this file.
+const FIRST_RESPONSE_WORKING_DAYS = 5;
+
+function lastNWorkingDays(n) {
+  const days = [];
+  let cursorMs = Date.now();
+  while (days.length < n) {
+    const dow = new Date(cursorMs).getUTCDay(); // 0 = Sunday, 6 = Saturday
+    if (dow !== 0 && dow !== 6) days.unshift(new Date(cursorMs).toISOString().slice(0, 10));
+    cursorMs -= 24 * 60 * 60 * 1000;
+  }
+  return days;
+}
 
 function dailyFirstResponseTrend() {
   const byDay = Object.fromEntries(dailyFirstResponseTrendStmt.all().map((r) => [r.period, r]));
-  const out = [];
-  for (let i = FIRST_RESPONSE_DAILY_WINDOW_DAYS - 1; i >= 0; i -= 1) {
-    const period = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return lastNWorkingDays(FIRST_RESPONSE_WORKING_DAYS).map((period) => {
     const row = byDay[period];
     // avgHours stays null (not 0) for a day with no replies — 0h would
     // misleadingly read as "replied instantly," rather than "nobody
     // replied to anything that day."
-    out.push({ period, avgHours: row ? row.avgHours : null, count: row ? row.count : 0 });
-  }
-  return out;
+    return { period, avgHours: row ? row.avgHours : null, count: row ? row.count : 0 };
+  });
 }
 
 function firstResponseTimeTrend(granularity) {

@@ -734,11 +734,12 @@ const FIRST_RESPONSE_TREND_STMTS = ['month', 'quarter', 'year'].reduce((stmts, g
   return stmts;
 }, {});
 
-// Day isn't part of periodExprFor (that's fiscal month/quarter/year only),
-// and deliberately NOT zero-filled from TOTAL_SINCE the way volume/category
-// day-trends are — this is a process metric, same as the month/quarter/year
-// statements above (which likewise only ever return periods that actually
-// have a first reply in them, no zero-value placeholders for empty ones).
+// Day isn't part of periodExprFor (that's fiscal month/quarter/year only).
+// Raw per-day rows only — zero-filling happens in dailyFirstResponseTrend
+// below, over a trailing window rather than from TOTAL_SINCE (see there for
+// why). Month/quarter/year above stay un-zero-filled — those spans are long
+// enough that "no data this month" reads as a real gap on its own, whereas
+// a bare day can look broken/frozen with nothing to explain a quiet one.
 const dailyFirstResponseTrendStmt = db.prepare(
   `SELECT date(first_replied_at) as period,
           AVG((julianday(first_replied_at) - julianday(received_at)) * 24) as avgHours,
@@ -747,8 +748,33 @@ const dailyFirstResponseTrendStmt = db.prepare(
    GROUP BY period ORDER BY period ASC`
 );
 
+// Trailing window only, not all the way back to TOTAL_SINCE the way
+// Volume's day view is (dailyVolumeTrend) — first-response tracking is
+// forward-looking only (see first_replied_at's column comment in
+// db/index.js), so zero-filling from TOTAL_SINCE would print weeks of
+// "0 replied" days from before this feature even existed, implying a data
+// gap that was never real. Two weeks is enough to show "how's it going
+// lately" and to make a quiet day read as "nothing came in today" rather
+// than "this chart doesn't work," without dragging in that pre-feature
+// history.
+const FIRST_RESPONSE_DAILY_WINDOW_DAYS = 14;
+
+function dailyFirstResponseTrend() {
+  const byDay = Object.fromEntries(dailyFirstResponseTrendStmt.all().map((r) => [r.period, r]));
+  const out = [];
+  for (let i = FIRST_RESPONSE_DAILY_WINDOW_DAYS - 1; i >= 0; i -= 1) {
+    const period = new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const row = byDay[period];
+    // avgHours stays null (not 0) for a day with no replies — 0h would
+    // misleadingly read as "replied instantly," rather than "nobody
+    // replied to anything that day."
+    out.push({ period, avgHours: row ? row.avgHours : null, count: row ? row.count : 0 });
+  }
+  return out;
+}
+
 function firstResponseTimeTrend(granularity) {
-  if (granularity === 'day') return dailyFirstResponseTrendStmt.all();
+  if (granularity === 'day') return dailyFirstResponseTrend();
   const stmt = FIRST_RESPONSE_TREND_STMTS[granularity];
   if (!stmt) throw new Error(`Invalid granularity: ${granularity}. Use day, month, quarter, or year.`);
   return stmt.all();

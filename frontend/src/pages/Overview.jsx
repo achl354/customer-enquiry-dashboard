@@ -633,7 +633,12 @@ export default function Overview() {
             data={firstResponseTrendData}
             emptyMessage="No replies tracked yet — this only counts replies sent since this feature was added."
           >
-            <BarList data={firstResponseTrendData} format={(h) => `${h.toFixed(1)}h`} />
+            {/* Day is zero-filled over a trailing window (see
+                dailyFirstResponseTrend in db/repository.js) so a quiet day
+                still shows up as a real "0 replied" bar rather than just
+                vanishing — h can be null here, unlike month/quarter/year
+                which only ever include days that actually have a reply. */}
+            <BarList data={firstResponseTrendData} format={(h) => (h == null ? '–' : `${h.toFixed(1)}h`)} />
           </TrendPanelBody>
         </div>
 

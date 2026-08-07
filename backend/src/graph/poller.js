@@ -167,8 +167,17 @@ function runPollOnce() {
       if (id) ingested += 1;
     }
 
-    const flagSync = await syncFlagStatuses();
+    // syncReplyStatuses before syncFlagStatuses, not the reverse — both only
+    // look at currently-open enquiries, and staff's real workflow is often
+    // "reply, then immediately file the email into a folder" (the folder
+    // move signal syncFlagStatuses acts on) within the same poll interval.
+    // Flag-sync running first would close the enquiry out before reply-sync
+    // ever got a chance to see it as open, permanently losing first_replied_at
+    // for that enquiry — listOpenEnquiriesForReplySync() would never surface
+    // it again once closed. Checking replies first means first_replied_at is
+    // already captured by the time (if any) this same tick's flag-sync closes it.
     const replySync = await syncReplyStatuses();
+    const flagSync = await syncFlagStatuses();
     const resolvedAtBackfill = await backfillResolvedAt();
 
     lastPollAt = new Date().toISOString();

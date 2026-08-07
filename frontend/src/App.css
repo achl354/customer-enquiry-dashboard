@@ -734,7 +734,7 @@
    decoration. Deliberately not given to every panel — an accent that's
    always on stops meaning anything.
    -good is only used by the two RAG-target panels (Avg. resolution time,
-   Resolution time by priority) — those are literal target-hit/miss
+   First response time by priority) — those are literal target-hit/miss
    indicators, so "on target" gets its own explicit green rather than just
    falling back to a plain, unaccented card the way "no problem" does for
    the other panels above. */

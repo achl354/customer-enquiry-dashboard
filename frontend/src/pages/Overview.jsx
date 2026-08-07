@@ -45,14 +45,23 @@ const RESOLVED_SERIES = { key: 'resolved', label: 'Resolved', color: 'var(--stat
 
 const DEFAULT_SLA_HOURS = 48;
 
-// RAG targets for the two hours-based KPI panels that get a "needs
-// attention" accent below. Both use the same green/amber/red ratio —
-// amber starts at the target, red at 2x the target — rather than each
-// panel inventing its own banding: Avg. resolution time's 18h target came
-// with no separate amber/red split, but Urgent's did (12h/24h, exactly a
-// 2x band), so that ratio became the shared rule for consistency.
+// RAG targets for the hours-based KPI panels that get a "needs attention"
+// accent below. All three use the same green/amber/red ratio — amber
+// starts at the target, red at 2x the target — rather than each panel
+// inventing its own banding.
 const AVG_RESOLUTION_TARGET_HOURS = 18;
+// No longer drives an accent (see urgentFirstResponseAccent below) — kept
+// only to label Resolution time by priority's informational SLA-attainment
+// text. Urgent resolution time routinely includes time spent waiting on
+// the customer/supplier for more info, which isn't something staff can
+// control, so scoring it green/amber/red punished delays that weren't
+// really JD Healthcare's to fix. First response time (fully within staff's
+// control — it's staff picking up the enquiry, not waiting on anyone
+// else) is the metric actually held to a hard target now.
 const URGENT_RESOLUTION_TARGET_HOURS = 12;
+// Matches the "First meaningful response: ≤2 calendar hours" target from
+// the original Urgent SLA proposal.
+const URGENT_FIRST_RESPONSE_TARGET_HOURS = 2;
 
 // 'good' (<=target), 'warning' (<=2x target), or 'critical' (>2x target).
 // Returns null for a missing/unknown value (e.g. no resolved data yet)
@@ -406,29 +415,23 @@ export default function Overview() {
     return volumeTrend.data.map((row, i) => ({ period: row.period, received: receivedAvg[i], resolved: resolvedAvg[i] }));
   }, [volumeTrend.data, volumeGranularity, volumeSmoothed]);
 
-  // Extra detail folded into URGENT's label only (SLA attainment against
-  // the 24h target it was actually given, plus first-response avg) — HIGH/
-  // NORMAL/LOW get none of this since they have no defined targets to
-  // compare against yet, and printing a number with nothing to judge it
+  // SLA-attainment text folded into URGENT's label only (against the 24h
+  // window resolutionTimeByPriority defaults to) — informational now, not
+  // an accent driver (see URGENT_RESOLUTION_TARGET_HOURS above). HIGH/
+  // NORMAL/LOW get no extra text since they have no defined target to
+  // compare against, and printing a number with nothing to judge it
   // against would just be noise.
   const priorityTrendData = useMemo(() => {
     if (!priorityTrend.data) return [];
-    const firstResponseByPriority = new Map((firstResponseByPriorityTrend.data || []).map((r) => [r.priority, r]));
     return [...priorityTrend.data]
       .sort((a, b) => PRIORITY_ORDER.indexOf(a.priority) - PRIORITY_ORDER.indexOf(b.priority))
       .map((r) => {
         let extra = '';
-        if (r.priority === 'URGENT') {
-          const slaPct = r.slaComplianceRate == null ? null : Math.round(r.slaComplianceRate * 100);
-          const firstReply = firstResponseByPriority.get('URGENT');
-          const parts = [
-            // Matches the backend's default SLA window for this endpoint
-            // (db/repository.js's resolutionTimeByPriority) — Urgent's own
-            // 2x-target red threshold, not a separately-tracked number.
-            slaPct == null ? null : `${slaPct}% ≤${URGENT_RESOLUTION_TARGET_HOURS * 2}h`,
-            firstReply ? `first reply avg ${firstReply.avgHours.toFixed(1)}h` : null,
-          ].filter(Boolean);
-          if (parts.length > 0) extra = ` · ${parts.join(' · ')}`;
+        if (r.priority === 'URGENT' && r.slaComplianceRate != null) {
+          // Matches the backend's default SLA window for this endpoint
+          // (db/repository.js's resolutionTimeByPriority) — Urgent's own
+          // 2x-target red threshold, not a separately-tracked number.
+          extra = ` · ${Math.round(r.slaComplianceRate * 100)}% ≤${URGENT_RESOLUTION_TARGET_HOURS * 2}h`;
         }
         return {
           key: r.priority,
@@ -436,21 +439,35 @@ export default function Overview() {
           label: `${priorityLabel(r.priority)} (${r.count} resolved${extra})`,
         };
       });
-  }, [priorityTrend.data, firstResponseByPriorityTrend.data]);
+  }, [priorityTrend.data]);
+
+  // First response time by priority — see URGENT_FIRST_RESPONSE_TARGET_HOURS
+  // above for why this (not resolution time) is the metric with a real,
+  // enforced Urgent target now.
+  const firstResponseByPriorityData = useMemo(() => {
+    if (!firstResponseByPriorityTrend.data) return [];
+    return [...firstResponseByPriorityTrend.data]
+      .sort((a, b) => PRIORITY_ORDER.indexOf(a.priority) - PRIORITY_ORDER.indexOf(b.priority))
+      .map((r) => ({
+        key: r.priority,
+        value: r.avgHours,
+        label: `${priorityLabel(r.priority)} (${r.count} replied)`,
+      }));
+  }, [firstResponseByPriorityTrend.data]);
 
   // Per-bar RAG coloring for this panel — only URGENT has a real target
-  // (12h/24h), so it's the only bar that gets colored; HIGH/NORMAL/LOW
-  // stay the default series color rather than being colored against a
-  // target nobody's set for them (see the proposal discussion — inventing
-  // one would just paint them permanently red/amber for no real reason).
-  const urgentResolutionAccent = (() => {
-    const row = priorityTrendData.find((r) => r.key === 'URGENT');
-    return row ? ragTier(row.value, URGENT_RESOLUTION_TARGET_HOURS) : null;
+  // (2h/4h), so it's the only bar that gets colored; HIGH/NORMAL/LOW stay
+  // the default series color rather than being colored against a target
+  // nobody's set for them (see the proposal discussion — inventing one
+  // would just paint them permanently red/amber for no real reason).
+  const urgentFirstResponseAccent = (() => {
+    const row = firstResponseByPriorityData.find((r) => r.key === 'URGENT');
+    return row ? ragTier(row.value, URGENT_FIRST_RESPONSE_TARGET_HOURS) : null;
   })();
 
-  function priorityBarColor(key) {
-    if (key !== 'URGENT' || !urgentResolutionAccent) return 'var(--series-1)';
-    return `var(--status-${urgentResolutionAccent})`;
+  function firstResponsePriorityBarColor(key) {
+    if (key !== 'URGENT' || !urgentFirstResponseAccent) return 'var(--series-1)';
+    return `var(--status-${urgentFirstResponseAccent})`;
   }
 
   if (error) return <div className="error-state">Failed to load stats: {error}</div>;
@@ -571,10 +588,26 @@ export default function Overview() {
       </div>
 
       <div className="chart-grid">
-        <div className={`panel${urgentResolutionAccent ? ` panel-accent-${urgentResolutionAccent}` : ''}`}>
+        <div className={`panel${urgentFirstResponseAccent ? ` panel-accent-${urgentFirstResponseAccent}` : ''}`}>
+          <h3>First response time by priority</h3>
+          <p className="draft-hint" style={{ marginTop: 0, marginBottom: 10 }}>
+            Urgent target: ≤{URGENT_FIRST_RESPONSE_TARGET_HOURS}h — no target set yet for High/Normal/Low.
+          </p>
+          <TrendPanelBody
+            error={firstResponseByPriorityTrend.error}
+            loading={firstResponseByPriorityTrend.loading}
+            data={firstResponseByPriorityData}
+            emptyMessage="No replies tracked yet — this only counts replies sent since this feature was added."
+          >
+            <BarList data={firstResponseByPriorityData} format={(h) => `${h.toFixed(1)}h`} colorFor={firstResponsePriorityBarColor} />
+          </TrendPanelBody>
+        </div>
+
+        <div className="panel">
           <h3>Resolution time by priority</h3>
           <p className="draft-hint" style={{ marginTop: 0, marginBottom: 10 }}>
-            Urgent target: ≤{URGENT_RESOLUTION_TARGET_HOURS}h — no target set yet for High/Normal/Low.
+            Informational — includes time spent waiting on the customer/supplier for more
+            info, so it isn't scored against a target the way first response time is (left).
           </p>
           <TrendPanelBody
             error={priorityTrend.error}
@@ -582,7 +615,7 @@ export default function Overview() {
             data={priorityTrendData}
             emptyMessage="No resolved enquiries with known resolution time yet."
           >
-            <BarList data={priorityTrendData} format={(h) => `${h.toFixed(1)}h`} colorFor={priorityBarColor} />
+            <BarList data={priorityTrendData} format={(h) => `${h.toFixed(1)}h`} />
           </TrendPanelBody>
         </div>
 

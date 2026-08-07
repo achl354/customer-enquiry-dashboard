@@ -367,6 +367,76 @@ function getFacilityReclassifyStatus() {
   };
 }
 
+// Own in-flight slot — same "one operator, one job at a time" assumption as
+// the other one-off jobs above, not shared with any of them.
+let firstRepliedAtBackfillInFlight = null;
+let lastFirstRepliedAtBackfillResult = null;
+let lastFirstRepliedAtBackfillFinishedAt = null;
+
+/**
+ * One-off repair pass for closed enquiries missing first_replied_at — see
+ * listClosedEnquiriesMissingFirstRepliedAt in db/repository.js for exactly
+ * which rows this targets and why they exist (the poll-ordering race fixed
+ * in runPollOnce above). Re-checks Sent Items for each one's
+ * conversationId via the same fetchReplyStatus call syncReplyStatuses uses,
+ * and sets first_replied_at where a reply is found. Status is never
+ * touched here — these enquiries are already closed, this only recovers
+ * the one timestamp that got missed.
+ *
+ * Same fire-and-poll shape as backfillAllFoldersAndReassess — a mailbox
+ * with a lot of affected history could mean many Graph batch calls, easily
+ * enough to outlast a proxy's idle-connection timeout. See
+ * routes/ingest.js's /backfill-first-replied-at, the only thing that calls
+ * this. Deliberately not automatic/scheduled — this is a one-time repair
+ * for a bug that's now fixed going forward, not an ongoing job.
+ */
+async function backfillFirstRepliedAt() {
+  if (firstRepliedAtBackfillInFlight) return firstRepliedAtBackfillInFlight;
+
+  firstRepliedAtBackfillInFlight = (async () => {
+    const candidates = repo.listClosedEnquiriesMissingFirstRepliedAt();
+    if (candidates.length === 0) return { checked: 0, updated: 0 };
+
+    const replies = await graphClient.fetchReplyStatus(
+      candidates.map((e) => ({ graphMessageId: e.graphMessageId, conversationId: e.conversationId }))
+    );
+
+    let updated = 0;
+    for (const enquiry of candidates) {
+      const reply = replies.get(enquiry.graphMessageId);
+      if (reply?.firstReplyAt) {
+        repo.updateEnquiry(enquiry.id, { firstRepliedAt: reply.firstReplyAt });
+        updated += 1;
+      }
+    }
+
+    return { checked: candidates.length, updated };
+  })()
+    .then((result) => {
+      lastFirstRepliedAtBackfillResult = { ...result, error: null };
+      return result;
+    })
+    .catch((err) => {
+      lastFirstRepliedAtBackfillResult = { error: err.message };
+      throw err;
+    })
+    .finally(() => {
+      lastFirstRepliedAtBackfillFinishedAt = new Date().toISOString();
+      firstRepliedAtBackfillInFlight = null;
+    });
+
+  return firstRepliedAtBackfillInFlight;
+}
+
+/** Polled by GET /api/ingest/backfill-first-replied-at-status — see the comment above firstRepliedAtBackfillInFlight. */
+function getFirstRepliedAtBackfillStatus() {
+  return {
+    running: firstRepliedAtBackfillInFlight !== null,
+    lastResult: lastFirstRepliedAtBackfillResult,
+    lastFinishedAt: lastFirstRepliedAtBackfillFinishedAt,
+  };
+}
+
 /**
  * Start a scheduled poll (default every minute — override with
  * POLL_CRON_EXPRESSION, e.g. '*\/5 * * * *' for every 5 minutes, if
@@ -403,5 +473,7 @@ module.exports = {
   getBackfillStatus,
   reclassifyByFacility,
   getFacilityReclassifyStatus,
+  backfillFirstRepliedAt,
+  getFirstRepliedAtBackfillStatus,
   startScheduledPolling,
 };

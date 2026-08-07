@@ -484,6 +484,26 @@ function listOpenEnquiriesForReplySync() {
     }));
 }
 
+// One-off repair pass, not part of regular polling — closed enquiries that
+// never got a first_replied_at, most likely because they hit the poll-
+// ordering race fixed in graph/poller.js's runPollOnce() (flag-sync used
+// to close an enquiry out before reply-sync got a chance to see it while
+// still open, permanently excluding it from listOpenEnquiriesForReplySync
+// above). Unlike that race, this IS recoverable after the fact — Sent
+// Items still has the real reply, closed status or not — so this re-checks
+// every closed enquiry missing it, the same way reply-sync checks open
+// ones. See backfillFirstRepliedAt in graph/poller.js.
+function listClosedEnquiriesMissingFirstRepliedAt() {
+  return db
+    .prepare(
+      `SELECT id, graph_message_id, conversation_id FROM enquiries
+       WHERE status IN (${CLOSED_STATUS_SQL}) AND first_replied_at IS NULL
+         AND graph_message_id IS NOT NULL AND conversation_id IS NOT NULL`
+    )
+    .all()
+    .map((r) => ({ id: r.id, graphMessageId: r.graph_message_id, conversationId: r.conversation_id }));
+}
+
 // RESOLVED rows that predate resolved_at existing, or that resolved_at
 // backfill hasn't successfully reached yet — see backfillResolvedAt in
 // poller.js, which re-queries Graph for each one's lastModifiedDateTime.
@@ -1167,6 +1187,7 @@ module.exports = {
   overviewStats,
   listOpenEnquiriesForFlagSync,
   listOpenEnquiriesForReplySync,
+  listClosedEnquiriesMissingFirstRepliedAt,
   listResolvedEnquiriesMissingResolvedAt,
   listEnquiriesReceivedSince,
   listEnquiriesByFacility,

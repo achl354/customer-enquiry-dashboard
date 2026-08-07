@@ -121,6 +121,8 @@ The frontend reads `VITE_API_BASE` from `frontend/.env` (defaults to
 | `GET /api/ingest/backfill-status` | Poll this for the backfill's progress/result — `{running, lastResult, lastFinishedAt}` |
 | `POST /api/ingest/reclassify-by-facility` `{facility}` | "Reclassify" action on the Top facilities panel — re-runs the classifier against every enquiry currently attributed to `facility` (no Graph config needed). Returns `202` immediately — see "Reclassify by facility" below |
 | `GET /api/ingest/reclassify-by-facility-status` | Poll this for that job's progress/result — `{running, lastResult, lastFinishedAt}` |
+| `POST /api/ingest/backfill-first-replied-at` | One-off repair for closed enquiries with a missing `first_replied_at` (see "First response time backfill" below). No params — returns `202` immediately |
+| `GET /api/ingest/backfill-first-replied-at-status` | Poll this for that job's progress/result — `{running, lastResult, lastFinishedAt}` |
 | `GET /api/ingest/folder-messages?since=<date>&mailbox=<address>` | Read-only streamed CSV audit export, ~32 active folders by default (`?allFolders=true` for all ~380) — see "Folder audit export" below |
 
 ## AI classification
@@ -834,6 +836,41 @@ have to wait its turn behind a mailbox-wide catch-up — though triggering
 both at once could still double-call the classifier on any row they
 happen to both cover (same "one operator, one job" assumption as
 everywhere else this pattern is used).
+
+## First response time backfill (`/ingest/backfill-first-replied-at`)
+
+One-off repair, not a recurring job. `first_replied_at` (the timestamp
+behind the Overview page's "First response time" panels) used to have a
+gap: the regular poll cycle checked `syncFlagStatuses` (which can close an
+enquiry out to `RESOLVED` on a folder move) *before* `syncReplyStatuses`
+(which only looks at still-open enquiries to detect a reply and set
+`first_replied_at`). Since staff's real workflow is "reply, then file the
+email into a folder" — often within the same poll interval — an enquiry
+could get closed out before reply-sync ever got a chance to see it as
+open, permanently skipping it. That ordering is now fixed (`runPollOnce`
+in `graph/poller.js` checks replies first), so this can't happen to new
+activity going forward — but any enquiry that already hit the race has
+`first_replied_at` sitting `NULL` in the database with no way for regular
+polling to ever revisit it (it's not "open" anymore).
+
+Unlike a truly lost timestamp (e.g. a reply from before this column
+existed at all), this is actually recoverable — Sent Items still has the
+real reply, closed status or not. `POST /api/ingest/backfill-first-replied-at`
+re-runs the same Sent Items lookup `syncReplyStatuses` uses
+(`fetchReplyStatus` in `graph/client.js`) against every closed enquiry
+currently missing `first_replied_at`
+(`listClosedEnquiriesMissingFirstRepliedAt` in `db/repository.js`), and
+sets it wherever a matching reply is found. It never touches `status` —
+these enquiries are already closed, this only fills in the one missing
+timestamp.
+
+No `since`/`until` params (unlike `/backfill-all-folders`) — this isn't
+scoped by date, it just targets whatever's currently missing the
+timestamp, so re-running it after everything's already been recovered is
+a fast no-op (`{checked: 0, updated: 0}`). Same fire-and-`202`-then-poll
+shape as the other one-off jobs on this page — poll
+`GET /api/ingest/backfill-first-replied-at-status` for
+`{running, lastResult, lastFinishedAt}`.
 
 ## Folder audit export (`/folder-messages`)
 

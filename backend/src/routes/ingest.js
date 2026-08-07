@@ -5,6 +5,8 @@ const {
   getBackfillStatus,
   reclassifyByFacility,
   getFacilityReclassifyStatus,
+  backfillFirstRepliedAt,
+  getFirstRepliedAtBackfillStatus,
   isGraphConfigured,
 } = require('../graph/poller');
 const graphClient = require('../graph/client');
@@ -281,6 +283,44 @@ router.post('/reclassify-by-facility', (req, res) => {
 // reclassified, failed} (or {facility, error} if the run failed outright).
 router.get('/reclassify-by-facility-status', (req, res) => {
   res.json(getFacilityReclassifyStatus());
+});
+
+// One-off repair for closed enquiries with a missing first_replied_at — see
+// backfillFirstRepliedAt in graph/poller.js for exactly what this recovers
+// and why (a poll-ordering race, now fixed, that used to close an enquiry
+// out before its reply was ever checked). No `since`/`until` params — this
+// isn't a date-scoped catch-up, it re-checks every closed enquiry
+// currently missing the timestamp, whenever it was received. Same
+// fire-and-poll shape as /backfill-all-folders — poll GET
+// /backfill-first-replied-at-status for progress and the final result.
+router.post('/backfill-first-replied-at', (req, res) => {
+  if (!isGraphConfigured()) {
+    return res.status(400).json({ error: 'Microsoft Graph is not configured. Set TENANT_ID, CLIENT_ID, CLIENT_SECRET, MAILBOX in .env' });
+  }
+
+  if (getFirstRepliedAtBackfillStatus().running) {
+    return res.status(202).json({
+      started: false,
+      running: true,
+      message: 'A first-replied-at backfill is already running. Poll GET /api/ingest/backfill-first-replied-at-status for progress.',
+    });
+  }
+
+  backfillFirstRepliedAt().catch((err) => {
+    console.error('[ingest] backfill-first-replied-at: failed:', err.message);
+  });
+
+  res.status(202).json({
+    started: true,
+    message: 'Backfill started in the background. Poll GET /api/ingest/backfill-first-replied-at-status for progress and the final result.',
+  });
+});
+
+// Poll this after POSTing /backfill-first-replied-at. `running: true` while
+// still going; once false, `lastResult` holds {checked, updated} (or
+// {error} if the run failed outright).
+router.get('/backfill-first-replied-at-status', (req, res) => {
+  res.json(getFirstRepliedAtBackfillStatus());
 });
 
 // Full audit pull, read-only — every message received on/after `since`,

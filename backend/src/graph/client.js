@@ -568,9 +568,27 @@ async function fetchReplyStatus(items) {
         throw new Error(`Graph batch API error ${res.status}: ${errBody}`);
       }
       const data = await res.json();
+      // Previously: `if (r.status !== 200) continue;` with no logging at
+      // all — the assumption was this only ever meant "conversationId no
+      // longer resolves" (e.g. very old/purged mail), a genuinely benign,
+      // occasional case. But an individual sub-request failing is
+      // indistinguishable in the outer $batch response from that benign
+      // case, so a SYSTEMIC failure here (wrong filter syntax, a missing
+      // permission scope, whatever) looked identical to "nothing to
+      // report" — nothing in the logs to tell them apart, and reply
+      // detection would just silently never find anything, forever. Logs a
+      // per-chunk summary + one full example instead of one line per item,
+      // so a mailbox with many open enquiries doesn't flood the logs once
+      // this starts happening on every request.
+      let non200Count = 0;
+      let firstNon200Sample = null;
       for (const r of data.responses || []) {
         const item = batch[Number(r.id)];
-        if (r.status !== 200) continue; // skip silently, e.g. conversationId no longer valid
+        if (r.status !== 200) {
+          non200Count += 1;
+          if (!firstNon200Sample) firstNon200Sample = { conversationId: item.conversationId, status: r.status, body: r.body };
+          continue;
+        }
         const sentMessages = r.body?.value || [];
         const recipients = sentMessages
           .flatMap((m) => [...(m.toRecipients || []), ...(m.ccRecipients || [])])
@@ -579,6 +597,12 @@ async function fetchReplyStatus(items) {
         const sentTimes = sentMessages.map((m) => m.sentDateTime).filter(Boolean);
         const firstReplyAt = sentTimes.length > 0 ? sentTimes.reduce((min, t) => (t < min ? t : min)) : null;
         results.set(item.graphMessageId, { hasReply: sentMessages.length > 0, recipients, firstReplyAt });
+      }
+      if (non200Count > 0) {
+        console.warn(
+          `[graph-client] fetchReplyStatus: ${non200Count}/${batch.length} sub-requests in this chunk returned non-200. First example:`,
+          JSON.stringify(firstNon200Sample)
+        );
       }
     } catch (err) {
       console.error(`[graph-client] fetchReplyStatus: chunk of ${batch.length} failed, skipping it this cycle:`, err.message);

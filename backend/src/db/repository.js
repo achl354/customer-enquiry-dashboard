@@ -138,19 +138,84 @@ const insertStmt = db.prepare(`
     id, graph_message_id, internet_message_id, received_at, sender_name, sender_email,
     recipients, subject, body_preview, has_attachments, importance, web_link,
     category, priority, po_number, quote_number, facility, sender_domain, city_tag,
-    conversation_id, suggested_action, draft_reply, confidence, classified_by,
+    conversation_id, related_enquiry_id, suggested_action, draft_reply, confidence, classified_by,
     status, resolved_at, created_at, updated_at
   ) VALUES (
     @id, @graphMessageId, @internetMessageId, @receivedAt, @senderName, @senderEmail,
     @recipients, @subject, @bodyPreview, @hasAttachments, @importance, @webLink,
     @category, @priority, @poNumber, @quoteNumber, @facility, @senderDomain, @cityTag,
-    @conversationId, @suggestedAction, @draftReply, @confidence, @classifiedBy,
+    @conversationId, @relatedEnquiryId, @suggestedAction, @draftReply, @confidence, @classifiedBy,
     @status, @resolvedAt, @createdAt, @updatedAt
   )
   ON CONFLICT(graph_message_id) DO NOTHING
 `);
 
 const existsStmt = db.prepare('SELECT 1 FROM enquiries WHERE graph_message_id = ?');
+
+// --- Internal-forward priority inheritance ---
+//
+// shortCircuitCategory (triage/index.js) flatly assigns category=INTERNAL,
+// priority=LOW to any internal-sender/internal-recipient email, with no
+// content inspection — so a staff member forwarding an URGENT customer
+// complaint internally for action, or replying within that forwarded
+// thread, silently loses the original priority. Before that flat default
+// is trusted, check whether this INTERNAL email correlates to an original
+// enquiry already sitting in this table, and if so inherit its priority
+// (category stays INTERNAL — it genuinely is an internal-only thread, just
+// not a low-priority one).
+//
+// Tried in order:
+//  1. Same conversation_id — cheap, exact, covers an internal reply that
+//     stays within the original email's thread.
+//  2. Subject match after stripping FW:/Fwd:/RE:/AW: prefixes — needed
+//     because Outlook/Graph forwards often start a *new* conversationId
+//     (unlike replies, which preserve it), so conversationId alone misses
+//     genuine forwards.
+// Both are scoped to RELATED_ENQUIRY_WINDOW_DAYS so an old, unrelated
+// enquiry that happens to share a generic subject ("Question", "Update")
+// can't get matched months later.
+const FORWARD_SUBJECT_PREFIX_RE = /^\s*(fw|fwd|aw|re)\s*:\s*/i;
+const RELATED_ENQUIRY_WINDOW_DAYS = 30;
+
+// Repeated (not just replace-once) since a real thread subject is often
+// "Re: Fw: original subject" after a few rounds of reply-then-forward.
+function normalizeSubjectForMatch(subject) {
+  let s = (subject || '').trim();
+  let previous;
+  do {
+    previous = s;
+    s = s.replace(FORWARD_SUBJECT_PREFIX_RE, '').trim();
+  } while (s !== previous);
+  return s.toLowerCase();
+}
+
+const findByConversationIdStmt = db.prepare(
+  'SELECT * FROM enquiries WHERE conversation_id = @conversationId AND received_at >= @since ORDER BY received_at ASC LIMIT 1'
+);
+const recentEnquiriesForSubjectMatchStmt = db.prepare(
+  'SELECT * FROM enquiries WHERE received_at >= @since ORDER BY received_at ASC'
+);
+
+// Returns the rowToEnquiry-shaped original enquiry this INTERNAL email
+// should inherit priority from, or null if nothing correlates.
+function findOriginalForInternalForward(raw) {
+  // Falls back to "now" if receivedAt is missing/unparseable — receivedAt is
+  // a required, always-set field in practice, but this keeps a malformed
+  // value from throwing here rather than silently just finding no match.
+  const receivedMs = Date.parse(raw.receivedAt);
+  const anchorMs = Number.isNaN(receivedMs) ? Date.now() : receivedMs;
+  const since = new Date(anchorMs - RELATED_ENQUIRY_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+  if (raw.conversationId) {
+    const byConversation = findByConversationIdStmt.get({ conversationId: raw.conversationId, since });
+    if (byConversation) return byConversation;
+  }
+
+  const normalizedSubject = normalizeSubjectForMatch(raw.subject);
+  if (!normalizedSubject) return null;
+  const candidates = recentEnquiriesForSubjectMatchStmt.all({ since });
+  return candidates.find((row) => normalizeSubjectForMatch(row.subject) === normalizedSubject) || null;
+}
 
 /**
  * Classify a raw email (AI when configured, rules otherwise/on failure) and
@@ -168,6 +233,21 @@ async function ingestEmail(raw) {
 
   const result = await classifyEmail(raw);
   const timestamp = nowIso();
+
+  // See findOriginalForInternalForward above — an internal-only forward/
+  // reply otherwise always gets the flat category default (LOW), losing
+  // whatever priority the original external enquiry actually had. Only
+  // relevant for INTERNAL; every other category already went through
+  // content-based priority logic (rules or AI) that this shouldn't override.
+  let priority = result.priority;
+  let relatedEnquiryId = null;
+  if (result.category === 'INTERNAL') {
+    const original = findOriginalForInternalForward(raw);
+    if (original) {
+      relatedEnquiryId = original.id;
+      priority = original.priority;
+    }
+  }
 
   // movedOutOfInbox/lastModifiedDateTime are only present when raw came
   // from fetchAllMailboxMessagesSince (the all-folder historical backfill,
@@ -197,13 +277,14 @@ async function ingestEmail(raw) {
     importance: raw.importance || 'normal',
     webLink: raw.webLink || null,
     category: result.category,
-    priority: result.priority,
+    priority,
     poNumber: result.extractedFields.poNumber,
     quoteNumber: result.extractedFields.quoteNumber,
     facility: result.extractedFields.facility,
     senderDomain: result.extractedFields.senderDomain,
     cityTag: result.extractedFields.cityTag || null,
     conversationId: raw.conversationId || null,
+    relatedEnquiryId,
     suggestedAction: result.suggestedAction,
     draftReply: result.draftReply || null,
     confidence: result.confidence == null ? null : result.confidence,
@@ -241,6 +322,7 @@ function rowToEnquiry(row) {
       cityTag: row.city_tag,
     },
     conversationId: row.conversation_id,
+    relatedEnquiryId: row.related_enquiry_id,
     suggestedAction: row.suggested_action,
     draftReply: row.draft_reply,
     confidence: row.confidence,
@@ -1069,6 +1151,8 @@ module.exports = {
   statusForMissingMessage,
   statusForFolderMove,
   statusForConfirmedSpam,
+  findOriginalForInternalForward,
+  normalizeSubjectForMatch,
   resolutionTimeTrend,
   firstResponseTimeTrend,
   resolutionTimeByPriority,

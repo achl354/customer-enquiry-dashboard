@@ -80,6 +80,16 @@ if (!existingColumns.includes('first_replied_at')) {
 if (!existingColumns.includes('status_note')) {
   db.exec('ALTER TABLE enquiries ADD COLUMN status_note TEXT');
 }
+// Set at ingest time only, when an internal-only forward/reply (category
+// INTERNAL) is correlated back to an original external enquiry already in
+// this table — see findOriginalForInternalForward in repository.js. Lets
+// that original enquiry's priority be inherited instead of the flat LOW
+// every INTERNAL email otherwise gets, and gives the Detail page something
+// to link back to. Left null for every other row, including INTERNAL rows
+// with no correlated original (e.g. a genuine internal-only FYI).
+if (!existingColumns.includes('related_enquiry_id')) {
+  db.exec('ALTER TABLE enquiries ADD COLUMN related_enquiry_id TEXT');
+}
 
 // One-time reclassification, not a schema change — REMOVED used to mean "the
 // message became unreachable via Graph," modeled as distinct from RESOLVED

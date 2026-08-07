@@ -194,6 +194,17 @@ export default function Detail() {
                 <a href={enquiry.webLink} target="_blank" rel="noreferrer">Open in Outlook</a>
               </>
             )}
+            {enquiry.relatedEnquiryId && (
+              <>
+                {' · '}
+                {/* Set at ingest time when an internal-only forward/reply was correlated
+                    back to the external enquiry it's about — see
+                    findOriginalForInternalForward in backend/src/db/repository.js. This
+                    enquiry's priority was inherited from that original, not freshly
+                    classified. */}
+                <Link to={`/enquiries/${enquiry.relatedEnquiryId}`}>↳ Related enquiry (priority inherited)</Link>
+              </>
+            )}
           </div>
         </div>
         <div className="detail-header-badges">
